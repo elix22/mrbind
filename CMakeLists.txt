@@ -55,7 +55,7 @@ if(MRBIND_BUILD_PARSER)
         src/parser/multiplex_data.cpp
     )
 
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "GCC" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GCC" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
         set_source_files_properties(src/parser/disable_rtti.cpp PROPERTIES COMPILE_FLAGS -fno-rtti)
     endif()
 

@@ -49,11 +49,18 @@ if [[ $(uname -o) == Msys ]]; then
     SHARED_LIBRARY_PREFIX=
 fi
 
+# Need the SDK sysroot on macOS.
+if [[ $(uname) == Darwin ]]; then
+    EXTRA_PARSER_CXX_FLAGS+=(-isysroot "$(xcrun --show-sdk-path)")
+    SHARED_LIBRARY_EXT=.dylib
+    SHARED_LIBRARY_PREFIX=lib
+fi
+
 set -x
 
 # Assemble the combined input header.
 echo "#pragma once" >csharp/c_library/tmp/combined_input.h
-find input \( -name '*.h' -or -name '*.hpp' \) -printf "#include <%p>\n" >>csharp/c_library/tmp/combined_input.h
+find input \( -name '*.h' -or -name '*.hpp' \) | while read -r f; do echo "#include <$f>"; done >>csharp/c_library/tmp/combined_input.h
 
 # Parse the input header.
 ../build/mrbind \
@@ -62,7 +69,7 @@ find input \( -name '*.h' -or -name '*.hpp' \) -printf "#include <%p>\n" >>cshar
     --ignore :: \
     --allow Example \
     --copy-inherited-members \
-    "${EXTRA_PARSER_FLAGS[@]}" \
+    "${EXTRA_PARSER_FLAGS[@]+"${EXTRA_PARSER_FLAGS[@]}"}" \
     -- \
     -xc++-header \
     -resource-dir="$("$CLANG_CXX" -print-resource-dir)" \
@@ -119,6 +126,8 @@ fi
 # Run a test executable.
 if [[ $(uname -o) == Msys ]]; then
     PATH="csharp/c_library:$PATH" "$DOTNET" run --project csharp/example_consumer
+elif [[ $(uname) == Darwin ]]; then
+    DYLD_LIBRARY_PATH=csharp/c_library "$DOTNET" run --project csharp/example_consumer
 else
     LD_LIBRARY_PATH=csharp/c_library "$DOTNET" run --project csharp/example_consumer
 fi

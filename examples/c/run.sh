@@ -45,11 +45,16 @@ if [[ $(uname -o) == Msys ]]; then
     SHARED_LIBRARY_EXT=.dll
 fi
 
+# Need the SDK sysroot on macOS.
+if [[ $(uname) == Darwin ]]; then
+    EXTRA_PARSER_CXX_FLAGS+=(-isysroot "$(xcrun --show-sdk-path)")
+fi
+
 set -x
 
 # Assemble the combined input header.
 echo "#pragma once" >c/output/tmp/combined_input.h
-find input \( -name '*.h' -or -name '*.hpp' \) -printf "#include <%p>\n" >>c/output/tmp/combined_input.h
+find input \( -name '*.h' -or -name '*.hpp' \) | while read -r f; do echo "#include <$f>"; done >>c/output/tmp/combined_input.h
 
 # Parse the input header.
 ../build/mrbind \
@@ -57,7 +62,7 @@ find input \( -name '*.h' -or -name '*.hpp' \) -printf "#include <%p>\n" >>c/out
     -o c/output/tmp/parse_result.json \
     --ignore :: \
     --allow Example \
-    "${EXTRA_PARSER_FLAGS[@]}" \
+    "${EXTRA_PARSER_FLAGS[@]+"${EXTRA_PARSER_FLAGS[@]}"}" \
     -- \
     -xc++-header \
     -resource-dir="$("$CLANG_CXX" -print-resource-dir)" \
