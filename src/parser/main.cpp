@@ -680,7 +680,10 @@ namespace mrbind
                     return true;
             }
 
-            if (!params.rejected_namespace_stack.empty() && params.rejected_namespace_stack.back() && !params.whitelisted_entities.Contains(name_without_template_args) && !params.whitelisted_entities.Contains(name))
+            // If we're inside a non-rejected class, its members inherit the class's allowance
+            // and don't need to individually appear in the whitelist.
+            bool inside_nonrejected_class = !params.nonrejected_class_stack.empty() && bool(params.nonrejected_class_stack.back());
+            if (!inside_nonrejected_class && !params.rejected_namespace_stack.empty() && params.rejected_namespace_stack.back() && !params.whitelisted_entities.Contains(name_without_template_args) && !params.whitelisted_entities.Contains(name))
             {
                 // This entity is blacklisted because its enclosing entity is blacklisted, and it itself is not whitelisted.
                 if (out_ignore)
@@ -810,7 +813,25 @@ namespace mrbind
             }
             else
             {
-                out_arg->as_cpp_expression = out_arg->original_spelling;
+                // If the default argument is an enum constant reference, use the fully-qualified name so it
+                // works outside the class scope in generated bindings.
+                bool used_qualified_name = false;
+                if (const auto *dre = clang::dyn_cast<clang::DeclRefExpr>(default_arg->IgnoreImpCasts()))
+                {
+                    if (const auto *ecd = clang::dyn_cast<clang::EnumConstantDecl>(dre->getDecl()))
+                    {
+                        std::string qualified_name;
+                        llvm::raw_string_ostream qss(qualified_name);
+                        ecd->printQualifiedName(qss, printing_policy);
+                        if (qualified_name != out_arg->original_spelling && qualified_name.find("::") != std::string::npos)
+                        {
+                            out_arg->as_cpp_expression = std::move(qualified_name);
+                            used_qualified_name = true;
+                        }
+                    }
+                }
+                if (!used_qualified_name)
+                    out_arg->as_cpp_expression = out_arg->original_spelling;
             }
         }
         else
@@ -1136,7 +1157,36 @@ namespace mrbind
     // Whether we should reject functions with this type in the signature, or class members of this type.
     [[nodiscard]] bool ShouldRejectMentionsOfType(const clang::QualType &type, const clang::CompilerInstance &ci, const VisitorParams &params, const PrintingPolicies &printing_policies)
     {
-        return params.blacklisted_mentioned_types.Contains(GetCanonicalTypeName(type, ci, params, printing_policies.normal, true));
+        if (params.blacklisted_mentioned_types.Contains(GetCanonicalTypeName(type, ci, params, printing_policies.normal, true)))
+            return true;
+
+        // Recursively unwrap so that e.g. `--skip-mentions-of Foo` matches
+        // `Foo[2]`, `Foo *`, and `SomeTemplate<Foo>`.
+        const clang::Type *tp = type.getCanonicalType().getTypePtr();
+
+        if (const auto *arr = clang::dyn_cast<clang::ArrayType>(tp))
+            return ShouldRejectMentionsOfType(arr->getElementType(), ci, params, printing_policies);
+
+        if (const auto *ptr = clang::dyn_cast<clang::PointerType>(tp))
+            return ShouldRejectMentionsOfType(ptr->getPointeeType(), ci, params, printing_policies);
+
+        // Check template arguments of class template specialisations.
+        if (const auto *rec = clang::dyn_cast<clang::RecordType>(tp))
+        {
+            if (const auto *spec = clang::dyn_cast<clang::ClassTemplateSpecializationDecl>(rec->getDecl()))
+            {
+                for (const auto &arg : spec->getTemplateArgs().asArray())
+                {
+                    if (arg.getKind() == clang::TemplateArgument::Type)
+                    {
+                        if (ShouldRejectMentionsOfType(arg.getAsType(), ci, params, printing_policies))
+                            return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     // Passing non-const decl here because `Sema::CheckInstantiatedFunctionTemplateConstraints()` needs that.

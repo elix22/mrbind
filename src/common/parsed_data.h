@@ -412,7 +412,7 @@ namespace mrbind
             ret.remove_prefix(8); // The length of the word `operator`.
 
             // Just in case, but this shouldn't happen.
-            while (self.name.starts_with(' '))
+            while (ret.starts_with(' '))
                 ret.remove_prefix(1);
 
             return ret;

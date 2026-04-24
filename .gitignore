@@ -22,3 +22,10 @@ pybind11/
 /examples/csharp/example_consumer/obj
 /examples/python/pybind11
 /examples/python/output
+/examples/bullet_c/output
+/examples/bullet_csharp/c_library
+/examples/bullet_csharp/library/src
+/examples/bullet_csharp/library/bin
+/examples/bullet_csharp/library/obj
+/examples/bullet_csharp/example_consumer/bin
+/examples/bullet_csharp/example_consumer/obj

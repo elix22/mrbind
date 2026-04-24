@@ -5,6 +5,7 @@
 #include <cppdecl/declarations/parse.h>
 
 #include <exception>
+#include <iostream>
 #include <numeric>
 #include <ostream>
 
@@ -6642,7 +6643,14 @@ namespace mrbind::CSharp
                                 else
                                 {
                                     // Just the normal field.
-                                    EmitCppField(file, cpp_qual_name, field, is_exposed_struct_by_value ? false : IsConst(), fat_objects ? (field.is_static ? &field_init_static : &field_init_nonstatic) : nullptr);
+                                    try
+                                    {
+                                        EmitCppField(file, cpp_qual_name, field, is_exposed_struct_by_value ? false : IsConst(), fat_objects ? (field.is_static ? &field_init_static : &field_init_nonstatic) : nullptr);
+                                    }
+                                    catch (std::exception &e)
+                                    {
+                                        std::clog << "mrbind_gen_csharp: warning: Skipping field `" << field.full_name << "` in class `" << cpp_type << "`: " << e.what() << "\n";
+                                    }
                                 }
                             }
                         }
@@ -7529,7 +7537,8 @@ namespace mrbind::CSharp
         {
             // Fields without const getters should be impossible.
             // If this fails, did you perhaps to try call this method on a field of an exposed struct?
-            assert(field.getter_const);
+            if (!field.getter_const)
+                throw std::runtime_error("Field `" + field.full_name + "` has no const getter (was it skipped by the C generator?).");
 
             const std::string csharp_enclosing_class_name = CppToCSharpUnqualClassName(cpp_class, is_const);
             const std::string csharp_field_name = CppToCSharpFieldName(cpp_class, field.is_static, field.full_name);
@@ -7664,6 +7673,10 @@ namespace mrbind::CSharp
                     const bool is_class = std::holds_alternative<CInterop::TypeKinds::Class>(type_desc->var);
 
                     const std::optional<std::string> csharp_nonclass_type = !is_class ? CppToCSharpKnownSizeType(cpp_underlying_type) : std::nullopt;
+
+                    // `void` is not a valid C# generic type argument, so `Box<void>` is invalid. Skip the field.
+                    if (csharp_nonclass_type && *csharp_nonclass_type == "void")
+                        throw std::runtime_error("Field type `" + cpp_underlying_type_str + " *` cannot be represented as `Box<void>` in C#; skipping.");
 
                     if (is_class || csharp_nonclass_type)
                     {

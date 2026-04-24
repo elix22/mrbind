@@ -1,3 +1,6 @@
 [submodule "deps/cppdecl"]
 	path = deps/cppdecl
-	url = https://github.com/MeshInspector/cppdecl
+	url = https://github.com/elix22/cppdecl.git
+[submodule "bullet"]
+	path = bullet
+	url = https://github.com/elix22/bullet3.git

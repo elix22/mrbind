@@ -5448,9 +5448,10 @@ namespace mrbind::C
 
                                 self.EmitClassMemberAccessors(file, cl, elem);
                             }
-                            catch (...)
+                            catch (std::exception &e)
                             {
-                                std::throw_with_nested(std::runtime_error("While binding field `" + elem.full_name + "`:"));
+                                // Warn and skip fields that can't be bound (e.g. fields of unknown types).
+                                std::clog << "mrbind_gen_c: warning: Skipping field `" << elem.full_name << "` in class `" << cl.full_type << "`: " << e.what() << "\n";
                             }
                         },
                         [&](const ClassCtor &elem)
@@ -5516,9 +5517,10 @@ namespace mrbind::C
                                 // If not, we'll emit them later, after all the members.
                                 EmitMiscFunctionsOnce();
                             }
-                            catch (...)
+                            catch (std::exception &e)
                             {
-                                std::throw_with_nested(std::runtime_error("While binding constructor:"));
+                                // Warn and skip constructors that can't be bound (e.g. parameters of unknown types).
+                                std::clog << "mrbind_gen_c: warning: Skipping constructor in class `" << cl.full_type << "`: " << e.what() << "\n";
                             }
                         },
                         [&](const ClassMethod &elem)
@@ -5556,9 +5558,10 @@ namespace mrbind::C
                                 params.SetFromParsedClassMethod(self, cl, elem, GetNamespaceStack());
                                 self.EmitFunction(file, params);
                             }
-                            catch (...)
+                            catch (std::exception &e)
                             {
-                                std::throw_with_nested(std::runtime_error("While binding destructor:"));
+                                // Warn and skip methods that can't be bound (e.g. parameters of unknown types).
+                                std::clog << "mrbind_gen_c: warning: Skipping method `" << elem.full_name << "` in class `" << cl.full_type << "`: " << e.what() << "\n";
                             }
                         },
                         [&](const ClassConvOp &elem)
@@ -5628,9 +5631,10 @@ namespace mrbind::C
                 params.SetFromParsedFunc(self, func, GetClassStack().size() > 0, GetNamespaceStack());
                 self.EmitFunction(self.GetOutputFile(func.declared_in_file), params);
             }
-            catch (...)
+            catch (std::exception &e)
             {
-                std::throw_with_nested(std::runtime_error("While binding free function `" + func.full_qual_name + "`:"));
+                // Warn and skip free functions that can't be bound (e.g. parameters of unknown types).
+                std::clog << "mrbind_gen_c: warning: Skipping free function `" << func.full_qual_name << "`: " << e.what() << "\n";
             }
         }
 
