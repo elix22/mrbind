@@ -453,4 +453,19 @@ int main(int raw_argc, char **raw_argv)
             }
         }
     }
+
+    // Write trampoline source files (extern "C" → C++ forwarding functions that break the
+    // infinite-recursion caused by C/C++ name-collision in global free-function wrappers).
+    for (const auto &[path, content] : generator.extra_source_files)
+    {
+        if (verbose)
+            std::cerr << "mrbind_gen_c: Writing file: " << path << '\n';
+
+        std::ofstream out(mrbind::MakePath(path));
+        if (!out)
+            throw std::runtime_error("Failed to open file for writing: `" + path + "`.");
+        out << content;
+        if (!out)
+            throw std::runtime_error("Failed to write to file: `" + path + "`.");
+    }
 }

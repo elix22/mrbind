@@ -5629,6 +5629,68 @@ namespace mrbind::C
 
                 EmitFuncParams params;
                 params.SetFromParsedFunc(self, func, GetClassStack().size() > 0, GetNamespaceStack());
+
+                // Detect name collision: a free global function whose C wrapper name matches its
+                // C++ unqualified name (e.g. btSetTaskScheduler → ::btSetTaskScheduler).
+                // Inside an extern "C" wrapper body, ::funcName() resolves to the C-linkage wrapper
+                // itself (same unmangled symbol) rather than the C++ implementation — infinite recursion.
+                //
+                // Fix: emit a companion trampoline source file that includes ONLY the C++ header
+                // (no C binding header).  Inside that TU, funcName() unambiguously resolves to the
+                // C++ mangled symbol.  The wrapper in the main file calls the renamed trampoline.
+                if (!GetClassStack().size() && params.cpp_called_func == "::" + params.name.c)
+                {
+                    const std::string tramp_name = "_mrbind_tramp_" + params.name.c;
+
+                    // Build param-declaration and param-call strings from the parsed function data.
+                    std::string param_decls, param_call;
+                    for (std::size_t i = 0; i < func.params.size(); i++)
+                    {
+                        if (i > 0) { param_decls += ", "; param_call += ", "; }
+                        const auto &p = func.params[i];
+                        const std::string pname = p.name.value_or("_p" + std::to_string(i));
+                        param_decls += p.type.canonical + " " + pname;
+                        param_call  += pname;
+                    }
+                    const std::string ret = func.return_type.canonical;
+
+                    // Derive the trampoline file path from the main source file path.
+                    const std::string tramp_path = [&]
+                    {
+                        std::string p = file.source.full_output_path;
+                        const auto dot = p.rfind('.');
+                        return (dot != std::string::npos ? p.substr(0, dot) : p)
+                               + "_mrbind_tramp" + self.extension_source;
+                    }();
+
+                    auto &tramp = self.extra_source_files[tramp_path];
+                    if (tramp.empty())
+                    {
+                        tramp = "// machine generated, do not edit\n";
+                        // Include ONLY the C++ header — NOT the generated C binding header.
+                        for (const auto &h : self.ParsedFilenameToRelativeNamesForInclusion(func.declared_in_file))
+                            tramp += "#include <" + h + ">\n";
+                        tramp += "\n";
+                    }
+                    if (tramp.find(tramp_name) == std::string::npos)
+                    {
+                        tramp += "extern \"C\" " + ret + " " + tramp_name + "(" + param_decls + ")\n{\n";
+                        if (ret != "void")
+                            tramp += "    return ";
+                        else
+                            tramp += "    ";
+                        tramp += func.qual_name + "(" + param_call + ");\n}\n\n";
+
+                        // Forward-declare the trampoline in the main source file so the wrapper body
+                        // can call it.  after_includes is written after all #includes, before bodies.
+                        file.source.after_includes += "extern \"C\" " + ret + " " + tramp_name
+                                                      + "(" + param_decls + ");\n";
+                    }
+
+                    // Replace the recursive call with the renamed trampoline.
+                    params.cpp_called_func = tramp_name;
+                }
+
                 self.EmitFunction(self.GetOutputFile(func.declared_in_file), params);
             }
             catch (std::exception &e)

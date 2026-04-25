@@ -285,6 +285,13 @@ namespace mrbind::C
         // We rely on those having stable addresses.
         std::unordered_map<std::string, OutputFile> outputs;
 
+        // Extra raw source files to emit alongside the normal outputs.
+        // Keyed by absolute output path; content is written verbatim.
+        // Used to emit trampoline files that break the extern "C" / C++ name-collision
+        // infinite-recursion problem for global free functions whose C wrapper name
+        // equals their C++ unqualified name.
+        std::unordered_map<std::string, std::string> extra_source_files;
+
         // What directories we need to create in the output.
         std::unordered_set<std::filesystem::path> directories_to_create;
 
