@@ -176,7 +176,7 @@ echo "#include <btBulletDynamicsCommon.h>" >>bullet_csharp/c_library/tmp/combine
 ../build/mrbind_gen_csharp \
     --input-json bullet_csharp/c_library/tmp/c_desc.json \
     --output-dir bullet_csharp/library/src \
-    --imported-lib-name bullet_bindings \
+    --imported-lib-name cbullet \
     --helpers-namespace Bullet \
     --force-namespace Bullet \
     "${EXTRA_GEN_FLAGS[@]}"
@@ -201,7 +201,7 @@ if [[ $SOURCES ]]; then
         "$BULLET_SRC/btBulletDynamicsAll.cpp" \
         -shared -fPIC \
         -fvisibility=hidden -fvisibility-inlines-hidden \
-        -o bullet_csharp/c_library/${SHARED_LIBRARY_PREFIX}bullet_bindings$SHARED_LIBRARY_EXT \
+        -o bullet_csharp/c_library/${SHARED_LIBRARY_PREFIX}cbullet$SHARED_LIBRARY_EXT \
         "${EXTRA_CXX_FLAGS[@]}"
 else
     echo "The generator didn't produce any source files that need to be compiled."

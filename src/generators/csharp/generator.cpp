@@ -215,7 +215,7 @@ namespace mrbind::CSharp
 
     void OutputFile::DumpToOstream(std::ostream &out) const
     {
-        out << contents;
+        out << "// machine generated, do not edit\n" << contents;
     }
 
     void OutputFile::WriteString(std::string_view input, int extra_indent_levels)
@@ -5309,7 +5309,6 @@ namespace mrbind::CSharp
 
         // Note! If it turns out that we need to specify the calling convention here, don't forget to also add it
         //   to our `std::function` implementation and its numerous delegates.
-        ret.dllimport_decl = "[System.Runtime.InteropServices.DllImport(";
 
         std::string_view lib_name;
         { // Decide what library to load.
@@ -5326,11 +5325,22 @@ namespace mrbind::CSharp
                 lib_name = iter->second;
             }
         }
-        ret.dllimport_decl += EscapeQuoteString(lib_name);
 
-        ret.dllimport_decl += ", EntryPoint = \"";
-        ret.dllimport_decl += c_name;
-        ret.dllimport_decl += "\", ExactSpelling = true)]\nextern static ";
+        const std::string entry_point_part =
+            ", EntryPoint = \"" + std::string(c_name) +
+            "\", CallingConvention = System.Runtime.InteropServices.CallingConvention.Cdecl, ExactSpelling = true)]";
+
+        const std::string ios_path = "@rpath/" + std::string(lib_name) + ".framework/" + std::string(lib_name);
+
+        ret.dllimport_decl  = "#if __IOS__\n";
+        ret.dllimport_decl += "[System.Runtime.InteropServices.DllImport(";
+        ret.dllimport_decl += EscapeQuoteString(ios_path);
+        ret.dllimport_decl += entry_point_part;
+        ret.dllimport_decl += "\n#else\n";
+        ret.dllimport_decl += "[System.Runtime.InteropServices.DllImport(";
+        ret.dllimport_decl += EscapeQuoteString(lib_name);
+        ret.dllimport_decl += entry_point_part;
+        ret.dllimport_decl += "\n#endif\nextern static ";
         ret.dllimport_decl += return_type;
         if (!ret.dllimport_decl.ends_with('*'))
             ret.dllimport_decl += ' ';

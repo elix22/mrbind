@@ -5786,6 +5786,8 @@ namespace mrbind::C
 
     void Generator::DumpFileToOstream(OutputFile &context, const OutputFile::SpecificFileContents &file, std::ostream &out)
     {
+        out << "// machine generated, do not edit\n";
+
         const bool is_header = &file != &context.source;
 
         const bool convenience_includes_in_this_file = is_header && add_convenience_includes && !file.include_guard_name.empty();
