@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR/.."
 
 mkdir -p bullet_c/output/tmp
 
-BULLET_SRC="$(pwd)/../bullet/src"
+BULLET_SRC="$(pwd)/../deps/bullet/src"
 
 # Clang-style flags for the parser.
 EXTRA_PARSER_CXX_FLAGS=(
