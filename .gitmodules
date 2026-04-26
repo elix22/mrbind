@@ -7,4 +7,4 @@
 [submodule "deps/JoltPhysics"]
 	path = deps/JoltPhysics
 	url = https://github.com/elix22/JoltPhysics.git
-	tag = v5.5.0
+	branch = v5.5.0.bindings
