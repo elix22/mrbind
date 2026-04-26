@@ -67,7 +67,14 @@ echo "#include \"$HELPER_DIR/jolt_helper.h\"" >>jolt_c/output/tmp/combined_input
     --allow JoltVec3f \
     --allow JoltVec3 \
     --allow JoltQuat \
+    --allow JoltMat44 \
+    --allow JoltRMat44 \
+    --allow JoltAABox \
+    --allow JoltCollisionGroup \
+    --allow JoltPhysicsMaterial \
+    --allow JoltTwoBodyConstraint \
     --allow JoltBodyID \
+    --allow JoltBodyIDList \
     --allow JoltConstraintID \
     --allow JoltShape \
     --allow JoltBoxShape \
@@ -76,7 +83,10 @@ echo "#include \"$HELPER_DIR/jolt_helper.h\"" >>jolt_c/output/tmp/combined_input
     --allow JoltCylinderShape \
     --allow JoltRotatedTranslatedShape \
     --allow JoltBodyCreationSettings \
+    --allow JoltSoftBodySharedSettings \
+    --allow JoltSoftBodyCreationSettings \
     --allow JoltPhysicsSystem \
+    --allow JoltBodyInterface \
     --allow JoltWorld \
     "${EXTRA_PARSER_FLAGS[@]+"${EXTRA_PARSER_FLAGS[@]}"}" \
     -- \
