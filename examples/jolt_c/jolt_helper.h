@@ -76,7 +76,7 @@ struct JoltConstraintID {
 
 /// Base class for all collision shapes.
 /// Shapes are ref-counted; call Release() when you no longer need the handle.
-class JoltShape {
+struct JoltShape {
 public:
     virtual ~JoltShape();
     void Release();
@@ -89,7 +89,7 @@ protected:
 };
 
 /// Axis-aligned box shape.
-class JoltBoxShape : public JoltShape {
+struct JoltBoxShape : public JoltShape {
 public:
     JoltBoxShape(double halfX, double halfY, double halfZ,
                  float convexRadius);
@@ -97,20 +97,20 @@ public:
 };
 
 /// Sphere shape.
-class JoltSphereShape : public JoltShape {
+struct JoltSphereShape : public JoltShape {
 public:
     JoltSphereShape(float radius);
 };
 
 /// Capsule shape (cylinder with hemispherical caps).  halfHeight is the
 /// half-height of the cylinder part only (total body height = 2*(halfHeight+radius)).
-class JoltCapsuleShape : public JoltShape {
+struct JoltCapsuleShape : public JoltShape {
 public:
     JoltCapsuleShape(float halfHeight, float radius);
 };
 
 /// Upright cylinder shape.
-class JoltCylinderShape : public JoltShape {
+struct JoltCylinderShape : public JoltShape {
 public:
     JoltCylinderShape(float halfHeight, float radius,
                       float convexRadius);
@@ -118,7 +118,7 @@ public:
 };
 
 /// A shape rotated and translated relative to a child shape.
-class JoltRotatedTranslatedShape : public JoltShape {
+struct JoltRotatedTranslatedShape : public JoltShape {
 public:
     JoltRotatedTranslatedShape(JoltShape* inner,
                                 double posX, double posY, double posZ,
@@ -130,7 +130,7 @@ public:
 // ---------------------------------------------------------------------------
 
 /// Parameters used when adding a body to the physics system.
-class JoltBodyCreationSettings {
+struct JoltBodyCreationSettings {
 public:
     /// Create settings for a body with the given shape.
     /// layer should be one of JoltObjectLayer values (0=NonMoving, 1=Moving).
@@ -169,7 +169,7 @@ public:
 /// and the full PhysicsSystem internally. The Jolt library itself is
 /// initialised automatically on first construction and cleaned up on last
 /// destruction.
-class JoltPhysicsSystem {
+struct JoltPhysicsSystem {
 public:
     /// Construct with default settings (65536 bodies, 65536 pairs,
     /// 65536 contacts, 2-layer NON_MOVING/MOVING setup).
@@ -295,7 +295,7 @@ private:
 
 /// Simplified wrapper kept for backward compatibility. Prefer JoltPhysicsSystem
 /// for new code.
-class JoltWorld {
+struct JoltWorld {
 public:
     JoltWorld();
     ~JoltWorld();
