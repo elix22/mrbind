@@ -4,3 +4,7 @@
 [submodule "bullet"]
 	path = deps/bullet
 	url = https://github.com/elix22/bullet3.git
+[submodule "deps/JoltPhysics"]
+	path = deps/JoltPhysics
+	url = https://github.com/elix22/JoltPhysics.git
+	tag = v5.5.0

@@ -29,3 +29,10 @@ pybind11/
 /examples/bullet_csharp/library/obj
 /examples/bullet_csharp/example_consumer/bin
 /examples/bullet_csharp/example_consumer/obj
+/examples/jolt_c/output
+/examples/jolt_csharp/c_library
+/examples/jolt_csharp/library/src
+/examples/jolt_csharp/library/bin
+/examples/jolt_csharp/library/obj
+/examples/jolt_csharp/example_consumer/bin
+/examples/jolt_csharp/example_consumer/obj
