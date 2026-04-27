@@ -310,8 +310,8 @@ EOF
     --input-json "$LIB_DIR/tmp/c_desc.json" \
     --output-dir jolt_csharp/library/src \
     --imported-lib-name cjolt \
-    --helpers-namespace Jolt \
-    --force-namespace Jolt \
+    --helpers-namespace JPH \
+    --force-namespace JPH \
     "${EXTRA_GEN_FLAGS[@]}"
 
 # Build the C# library.

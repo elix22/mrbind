@@ -10,62 +10,62 @@ class Program
     static void Main()
     {
         /* --- Jolt runtime init --- */
-        Jolt.Const_JoltHelpers.Init();
+        JPH.Const_JoltHelpers.Init();
 
         /* --- Allocator and job system --- */
-        using var alloc = new Jolt.JPH.TempAllocatorImpl(64 * 1024 * 1024);
-        using var jobs  = new Jolt.JPH.JobSystemThreadPool(2048, 8, -1);
+        using var alloc = new JPH.TempAllocatorImpl(64 * 1024 * 1024);
+        using var jobs  = new JPH.JobSystemThreadPool(2048, 8, -1);
 
         /* --- Broad-phase layer mapping: NonMoving->BP0, Moving->BP1 --- */
-        using var bpInterface = new Jolt.JPH.BroadPhaseLayerInterfaceTable(2, 2);
-        using var bp0 = new Jolt.JPH.BroadPhaseLayer(0);
-        using var bp1 = new Jolt.JPH.BroadPhaseLayer(1);
+        using var bpInterface = new JPH.BroadPhaseLayerInterfaceTable(2, 2);
+        using var bp0 = new JPH.BroadPhaseLayer(0);
+        using var bp1 = new JPH.BroadPhaseLayer(1);
         bpInterface.MapObjectToBroadPhaseLayer(ObjLayerNonMoving, bp0);
         bpInterface.MapObjectToBroadPhaseLayer(ObjLayerMoving,    bp1);
 
         /* --- Object layer pair filter: Moving collides with NonMoving and Moving --- */
-        using var pairFilter = new Jolt.JPH.ObjectLayerPairFilterTable(2);
+        using var pairFilter = new JPH.ObjectLayerPairFilterTable(2);
         pairFilter.EnableCollision(ObjLayerMoving, ObjLayerNonMoving);
         pairFilter.EnableCollision(ObjLayerMoving, ObjLayerMoving);
 
         /* --- Object-vs-broadphase filter --- */
         /* Explicit casts resolve ambiguous user-defined conversions (mutable vs const). */
-        using var objVsBP = new Jolt.JPH.ObjectVsBroadPhaseLayerFilterTable(
-            (Jolt.JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface, 2,
-            (Jolt.JPH.Const_ObjectLayerPairFilterTable)pairFilter, 2);
+        using var objVsBP = new JPH.ObjectVsBroadPhaseLayerFilterTable(
+            (JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface, 2,
+            (JPH.Const_ObjectLayerPairFilterTable)pairFilter, 2);
 
         /* --- Physics system --- */
-        using var sys = new Jolt.JPH.PhysicsSystem();
+        using var sys = new JPH.PhysicsSystem();
         sys.Init(1024, 0, 1024, 1024,
-            (Jolt.JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface,
-            (Jolt.JPH.Const_ObjectVsBroadPhaseLayerFilterTable)objVsBP,
-            (Jolt.JPH.Const_ObjectLayerPairFilterTable)pairFilter);
-        { using var gravity = new Jolt.JPH.Vec3(0f, -9.81f, 0f); sys.SetGravity(gravity); }
+            (JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface,
+            (JPH.Const_ObjectVsBroadPhaseLayerFilterTable)objVsBP,
+            (JPH.Const_ObjectLayerPairFilterTable)pairFilter);
+        { using var gravity = new JPH.Vec3(0f, -9.81f, 0f); sys.SetGravity(gravity); }
 
         var bi = sys.GetBodyInterface();
 
         /* --- Static ground box: 100x2x100 centred at (0,-1,0) --- */
-        using var floorHalfExtent = new Jolt.JPH.Vec3(50f, 1f, 50f);
-        var floorSS = new Jolt.JPH.BoxShapeSettings(floorHalfExtent);
-        using var floorCS = new Jolt.JPH.BodyCreationSettings();
-        floorCS.SetShapeSettings((Jolt.JPH.Const_BoxShapeSettings)floorSS);
+        using var floorHalfExtent = new JPH.Vec3(50f, 1f, 50f);
+        var floorSS = new JPH.BoxShapeSettings(floorHalfExtent);
+        using var floorCS = new JPH.BodyCreationSettings();
+        floorCS.SetShapeSettings((JPH.Const_BoxShapeSettings)floorSS);
         GC.SuppressFinalize(floorSS); /* floorCS now owns floorSS via Ref<> */
         floorCS.mPosition.Set(0f, -1f, 0f);
-        floorCS.mMotionType  = Jolt.JPH.EMotionType.Static;
+        floorCS.mMotionType  = JPH.EMotionType.Static;
         floorCS.mObjectLayer = ObjLayerNonMoving;
-        var floorId = bi.CreateAndAddBody(floorCS, Jolt.JPH.EActivation.DontActivate);
+        var floorId = bi.CreateAndAddBody(floorCS, JPH.EActivation.DontActivate);
 
         /* --- Dynamic sphere: radius 0.5 starting at (0,20,0) --- */
         /* No 'using': sphereCS takes Ref<> ownership via SetShapeSettings; C# must not double-free. */
-        var sphereSS = new Jolt.JPH.SphereShapeSettings();
+        var sphereSS = new JPH.SphereShapeSettings();
         sphereSS.mRadius = 0.5f;
-        using var sphereCS = new Jolt.JPH.BodyCreationSettings();
-        sphereCS.SetShapeSettings((Jolt.JPH.Const_SphereShapeSettings)sphereSS);
+        using var sphereCS = new JPH.BodyCreationSettings();
+        sphereCS.SetShapeSettings((JPH.Const_SphereShapeSettings)sphereSS);
         GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
         sphereCS.mPosition.Set(0f, 20f, 0f);
-        sphereCS.mMotionType  = Jolt.JPH.EMotionType.Dynamic;
+        sphereCS.mMotionType  = JPH.EMotionType.Dynamic;
         sphereCS.mObjectLayer = ObjLayerMoving;
-        var sphereId = bi.CreateAndAddBody(sphereCS, Jolt.JPH.EActivation.Activate);
+        var sphereId = bi.CreateAndAddBody(sphereCS, JPH.EActivation.Activate);
 
         sys.OptimizeBroadPhase();
 
@@ -94,6 +94,6 @@ class Program
         bi.DestroyBody(floorId);
 
         /* sys, objVsBP, pairFilter, bpInterface, jobs, alloc disposed by using blocks */
-        Jolt.Const_JoltHelpers.Shutdown();
+        JPH.Const_JoltHelpers.Shutdown();
     }
 }
