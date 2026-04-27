@@ -2418,7 +2418,7 @@ namespace mrbind::C
         {
             Param &param = params.emplace_back();
             param.name = new_param.name ? *new_param.name : "";
-            param.cpp_type = self.ParseTypeOrThrow(new_param.type.canonical);
+            param.cpp_type = self.ParseTypeOrThrow(PortableTypeStr(new_param.type));
 
             if (new_param.default_argument)
             {

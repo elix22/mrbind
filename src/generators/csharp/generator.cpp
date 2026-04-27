@@ -454,6 +454,19 @@ namespace mrbind::CSharp
             if (out_sizeof)
                 *out_sizeof = opt->type_size;
 
+            // Pointer-sized typedefs (size_t, ptrdiff_t, uintptr_t, etc.) must map to
+            // UIntPtr/IntPtr so the C# size matches the C size on every target (including
+            // wasm32 where `unsigned long` / `size_t` is 32 bits, not 64).
+            if (opt->typedef_for.has_value() && opt->type_size == c_desc.platform_info.pointer_size)
+            {
+                switch (opt->kind)
+                {
+                  case PrimitiveTypeInfo::Kind::unsigned_integral: return "UIntPtr";
+                  case PrimitiveTypeInfo::Kind::signed_integral:   return "IntPtr";
+                  default: break;
+                }
+            }
+
             switch (opt->kind)
             {
               case PrimitiveTypeInfo::Kind::boolean:
