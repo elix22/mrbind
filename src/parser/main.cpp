@@ -2131,8 +2131,11 @@ namespace mrbind
                 new_field.full_name = std::move(full_name);
                 new_field.type = GetTypeStrings(var->getType(), TypeUses::static_data_member);
 
-                new_field.type_size = DivideByByteSize(ctx->getTypeInfo(var->getType()).Width);
-                new_field.type_alignment = DivideByByteSize(ctx->getTypeInfo(var->getType()).Align);
+                // Don't call getTypeInfo() for static members: size/alignment are unused for statics
+                // (the C generator skips layout for is_static fields), and certain SIMD-aligned types
+                // (e.g. StaticArray<Vec3, N>) trigger a null-deref crash inside Clang's getASTRecordLayout.
+                new_field.type_size = 0;
+                new_field.type_alignment = 0;
                 new_field.byte_offset = std::size_t(-1); // Makes no sense for static variables.
             };
 

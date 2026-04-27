@@ -286,6 +286,23 @@ namespace mrbind::C
         {
             std::filesystem::path input_path = std::filesystem::weakly_canonical(MakePath(str));
 
+            // If this is a .inl file and a corresponding .h/.hpp exists on disk, use the header
+            // instead. Many libraries (Jolt, Bullet) end their headers with `#include "Foo.inl"`,
+            // so the header already pulls in the .inl. Including both in one TU causes redefinitions.
+            if (input_path.extension() == ".inl")
+            {
+                for (const char *ext : {".h", ".hpp"})
+                {
+                    std::filesystem::path h_path = input_path;
+                    h_path.replace_extension(ext);
+                    if (std::filesystem::exists(h_path))
+                    {
+                        input_path = std::move(h_path);
+                        break;
+                    }
+                }
+            }
+
             std::filesystem::path new_path;
             for (const auto &elem : assumed_include_directories)
             {
@@ -314,6 +331,26 @@ namespace mrbind::C
         HandleString(input.primary.canonical, true);
         for (const auto &elem : input.extra)
             HandleString(elem.canonical, false);
+
+        // If the set contains both "Foo.inl" and "Foo.h" (or "Foo.hpp"), drop "Foo.inl".
+        // The .h already #includes the .inl at its end (Jolt/Bullet pattern), so including
+        // both in the same TU causes redefinition errors.
+        for (auto it = ret.begin(); it != ret.end(); )
+        {
+            std::filesystem::path p(*it);
+            if (p.extension() == ".inl")
+            {
+                bool header_present =
+                    ret.count(PathToString(p.replace_extension(".h"))) ||
+                    ret.count(PathToString(p.replace_extension(".hpp")));
+                if (header_present)
+                {
+                    it = ret.erase(it);
+                    continue;
+                }
+            }
+            ++it;
+        }
 
         return ret;
     }

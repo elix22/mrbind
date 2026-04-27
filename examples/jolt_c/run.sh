@@ -117,6 +117,20 @@ set -x
     echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h\""
     echo "#include \"$JOLT_ROOT/Jolt/Physics/Character/CharacterBase.h\""
     echo "#include \"$JOLT_ROOT/Jolt/Physics/Character/CharacterVirtual.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Math/BVec16.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/DMat44.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Double3.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/DVec3.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Float2.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Float3.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Float4.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Mat44.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Matrix.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Quat.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/UVec4.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Vec3.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Vec4.h\"" 
+    echo "#include \"$JOLT_ROOT/Jolt/Math/Vector.h\"" 
     echo "#include \"$INIT_DIR/jolt_init_wrapper.h\""
 } >"$OUT/tmp/combined_input.h"
 
@@ -126,6 +140,20 @@ set -x
     -o "$OUT/tmp/parse_result.json" \
     --ignore :: \
     --skip-mentions-of std::align_val_t \
+    --allow JPH::BVec16 \
+    --allow JPH::DMat44 \
+    --allow JPH::Double3 \
+    --allow JPH::DVec3 \
+    --allow JPH::Float2 \
+    --allow JPH::Float3 \
+    --allow JPH::Float4 \
+    --allow JPH::Mat44 \
+    --allow JPH::Matrix \
+    --allow JPH::Quat \
+    --allow JPH::UVec4 \
+    --allow JPH::Vec3 \
+    --allow JPH::Vec4 \
+    --allow JPH::Vector \
     --allow JPH::RefTarget \
     --allow JPH::NonCopyable \
     --allow JPH::SerializableObject \
