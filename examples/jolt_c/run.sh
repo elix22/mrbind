@@ -7,140 +7,311 @@ cd "$SCRIPT_DIR/.."
 
 ./jolt_c/clean.sh
 
-mkdir -p jolt_c/output/tmp
+JOLT_ROOT="$(cd "$(pwd)/../deps/JoltPhysics" && pwd)"
+INIT_DIR="$(pwd)/jolt_c"
+OUT="jolt_c/output"
 
-JOLT_ROOT="$(pwd)/../deps/JoltPhysics"
-HELPER_DIR="$(pwd)/jolt_c"
+mkdir -p "$OUT/tmp" "$OUT/include" "$OUT/src"
 
-# Clang-style flags for the parser.
+# Clang-style flags for the parser (match generate_test.sh: NDEBUG = Release mode).
 EXTRA_PARSER_CXX_FLAGS=(
-    -std=c++17
+    -std=c++17 -Wall -Wextra
     -fparse-all-comments
-    -I"$HELPER_DIR"
+    -DNDEBUG
+    -I"$INIT_DIR"
 )
 
-# Optional tunable flags for the parser.
 EXTRA_PARSER_FLAGS=(
     --copy-inherited-members
 )
 
-# Optional tunable flags for the C generator.
-EXTRA_GEN_FLAGS=(
+EXTRA_GEN_C_FLAGS=(
+    --max-header-name-length 100
     --no-handle-exceptions
+    --expose-as-struct JPH::BodyID
+    --no-dynamic-cast
 )
 
-# Optional tunable flags for the library compilation.
 EXTRA_CXX_FLAGS=(
     -g
+    -DNDEBUG
 )
+# NOTE: -DNDEBUG matches the parser flags and disables Jolt's debug assertions.
 
-# Optional tunable flags for the example program compilation.
 EXTRA_C_FLAGS=(
     -g
 )
 
 SHARED_LIBRARY_EXT=.so
+SHARED_LIBRARY_PREFIX=lib
 
-# Need extra flags on MSYS2.
-if [[ $(uname -o) == Msys ]]; then
+if [[ $(uname -o 2>/dev/null) == Msys ]]; then
     EXTRA_PARSER_CXX_FLAGS+=(--sysroot="$MSYSTEM_PREFIX")
     SHARED_LIBRARY_EXT=.dll
+    SHARED_LIBRARY_PREFIX=
 fi
 
-# Need the SDK sysroot on macOS.
+PARSER_RESOURCE_DIR=""
 if [[ $(uname) == Darwin ]]; then
-    EXTRA_PARSER_CXX_FLAGS+=(-isysroot "$(xcrun --show-sdk-path)")
+    EXTRA_PARSER_CXX_FLAGS+=(-isysroot "$(xcrun --show-sdk-path)" -fno-blocks)
     SHARED_LIBRARY_EXT=.dylib
+    SHARED_LIBRARY_PREFIX=lib
+    if [[ -x /opt/homebrew/opt/llvm/bin/clang ]]; then
+        PARSER_RESOURCE_DIR="$(/opt/homebrew/opt/llvm/bin/clang -print-resource-dir)"
+    fi
 fi
 
 set -x
 
-# Assemble the combined input header.
-echo "#pragma once" >jolt_c/output/tmp/combined_input.h
-echo "#include \"$HELPER_DIR/jolt_helper.h\"" >>jolt_c/output/tmp/combined_input.h
+# Assemble combined input header (raw Jolt headers + JoltHelpers wrapper).
+{
+    echo "#pragma once"
+    echo "#include \"$JOLT_ROOT/Jolt/Jolt.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/RegisterTypes.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Core/Factory.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Core/JobSystemThreadPool.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/PhysicsSettings.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/PhysicsSystem.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/BoxShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/SphereShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/CapsuleShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/CylinderShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/TaperedCylinderShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/TriangleShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/PlaneShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/EmptyShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/ScaledShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/StaticCompoundShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/MutableCompoundShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/MeshShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/ConvexHullShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/HeightFieldShape.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Body/BodyCreationSettings.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Body/Body.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/PhysicsMaterial.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/CollisionGroup.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Constraints/TwoBodyConstraint.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Constraints/FixedConstraint.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Constraints/DistanceConstraint.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Constraints/PointConstraint.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Constraints/HingeConstraint.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/SoftBody/SoftBodySharedSettings.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/SoftBody/SoftBodyCreationSettings.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Geometry/AABox.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Core/TempAllocator.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Body/BodyInterface.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Body/BodyActivationListener.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/SubShapeID.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/CastResult.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/Shape/SubShapeIDPair.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Body/BodyFilter.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/ShapeFilter.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/ContactListener.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/NarrowPhaseQuery.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/ObjectLayerPairFilterTable.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Character/CharacterBase.h\""
+    echo "#include \"$JOLT_ROOT/Jolt/Physics/Character/CharacterVirtual.h\""
+    echo "#include \"$INIT_DIR/jolt_init_wrapper.h\""
+} >"$OUT/tmp/combined_input.h"
 
 # Parse the input header.
 ../build/mrbind \
-    jolt_c/output/tmp/combined_input.h \
-    -o jolt_c/output/tmp/parse_result.json \
+    "$OUT/tmp/combined_input.h" \
+    -o "$OUT/tmp/parse_result.json" \
     --ignore :: \
-    --allow JoltVec3f \
-    --allow JoltVec3 \
-    --allow JoltQuat \
-    --allow JoltMat44 \
-    --allow JoltRMat44 \
-    --allow JoltAABox \
-    --allow JoltCollisionGroup \
-    --allow JoltPhysicsMaterial \
-    --allow JoltTwoBodyConstraint \
-    --allow JoltBodyID \
-    --allow JoltBodyIDList \
-    --allow JoltConstraintID \
-    --allow JoltShape \
-    --allow JoltBoxShape \
-    --allow JoltSphereShape \
-    --allow JoltCapsuleShape \
-    --allow JoltCylinderShape \
-    --allow JoltRotatedTranslatedShape \
-    --allow JoltBodyCreationSettings \
-    --allow JoltSoftBodySharedSettings \
-    --allow JoltSoftBodyCreationSettings \
-    --allow JoltPhysicsSystem \
-    --allow JoltBodyInterface \
-    --allow JoltWorld \
+    --skip-mentions-of std::align_val_t \
+    --allow JPH::RefTarget \
+    --allow JPH::NonCopyable \
+    --allow JPH::SerializableObject \
+    --allow JPH::EMotionType \
+    --allow JPH::EPhysicsUpdateError \
+    --allow JPH::ShapeSettings \
+    --allow JPH::ConvexShapeSettings \
+    --allow JPH::DecoratedShapeSettings \
+    --allow JPH::CompoundShapeSettings \
+    --allow JPH::BoxShapeSettings \
+    --allow JPH::SphereShapeSettings \
+    --allow JPH::CapsuleShapeSettings \
+    --allow JPH::CylinderShapeSettings \
+    --allow JPH::TriangleShapeSettings \
+    --allow JPH::TaperedCapsuleShapeSettings \
+    --allow JPH::TaperedCylinderShapeSettings \
+    --allow JPH::ConvexHullShapeSettings \
+    --allow JPH::RotatedTranslatedShapeSettings \
+    --allow JPH::ScaledShapeSettings \
+    --allow JPH::OffsetCenterOfMassShapeSettings \
+    --allow JPH::StaticCompoundShapeSettings \
+    --allow JPH::MutableCompoundShapeSettings \
+    --allow JPH::MeshShapeSettings \
+    --allow JPH::EmptyShapeSettings \
+    --allow JPH::PlaneShapeSettings \
+    --allow JPH::HeightFieldShapeSettings \
+    --allow JPH::Shape \
+    --allow JPH::ConvexShape \
+    --allow JPH::DecoratedShape \
+    --allow JPH::CompoundShape \
+    --allow JPH::BoxShape \
+    --allow JPH::SphereShape \
+    --allow JPH::CapsuleShape \
+    --allow JPH::CylinderShape \
+    --allow JPH::TriangleShape \
+    --allow JPH::TaperedCapsuleShape \
+    --allow JPH::TaperedCylinderShape \
+    --allow JPH::ConvexHullShape \
+    --allow JPH::RotatedTranslatedShape \
+    --allow JPH::ScaledShape \
+    --allow JPH::OffsetCenterOfMassShape \
+    --allow JPH::StaticCompoundShape \
+    --allow JPH::MutableCompoundShape \
+    --allow JPH::MeshShape \
+    --allow JPH::EmptyShape \
+    --allow JPH::PlaneShape \
+    --allow JPH::HeightFieldShape \
+    --allow JPH::BodyCreationSettings \
+    --allow JPH::Body \
+    --allow JPH::PhysicsMaterial \
+    --allow JPH::CollisionGroup \
+    --allow JPH::ConstraintSettings \
+    --allow JPH::TwoBodyConstraintSettings \
+    --allow JPH::FixedConstraintSettings \
+    --allow JPH::DistanceConstraintSettings \
+    --allow JPH::PointConstraintSettings \
+    --allow JPH::HingeConstraintSettings \
+    --allow JPH::Constraint \
+    --allow JPH::TwoBodyConstraint \
+    --allow JPH::FixedConstraint \
+    --allow JPH::DistanceConstraint \
+    --allow JPH::PointConstraint \
+    --allow JPH::HingeConstraint \
+    --allow JPH::SoftBodySharedSettings \
+    --allow JPH::SoftBodyCreationSettings \
+    --allow JPH::SubShapeID \
+    --allow JPH::AABox \
+    --allow JPH::BodyID \
+    --allow JPH::EActivation \
+    --allow JPH::BroadPhaseLayer \
+    --allow JPH::BroadPhaseLayerInterface \
+    --allow JPH::BroadPhaseLayerInterfaceTable \
+    --allow JPH::ObjectVsBroadPhaseLayerFilter \
+    --allow JPH::ObjectLayerPairFilter \
+    --allow JPH::ObjectLayerPairFilterTable \
+    --allow JPH::ObjectVsBroadPhaseLayerFilterTable \
+    --allow JPH::BroadPhaseLayerFilter \
+    --allow JPH::DefaultBroadPhaseLayerFilter \
+    --allow JPH::SpecifiedBroadPhaseLayerFilter \
+    --allow JPH::ObjectLayerFilter \
+    --allow JPH::DefaultObjectLayerFilter \
+    --allow JPH::SpecifiedObjectLayerFilter \
+    --allow JPH::BodyActivationListener \
+    --allow JPH::BodyInterface \
+    --allow JPH::TempAllocator \
+    --allow JPH::TempAllocatorImpl \
+    --allow JPH::TempAllocatorMalloc \
+    --allow JPH::TempAllocatorImplWithMallocFallback \
+    --allow JPH::JobSystem \
+    --allow JPH::JobSystemWithBarrier \
+    --allow JPH::JobSystemThreadPool \
+    --allow JPH::PhysicsSettings \
+    --allow JPH::PhysicsSystem \
+    --allow JPH::Factory \
+    --allow JPH::BroadPhaseCastResult \
+    --allow JPH::RayCastResult \
+    --allow JPH::SubShapeIDPair \
+    --allow JPH::BodyFilter \
+    --allow JPH::IgnoreSingleBodyFilter \
+    --allow JPH::IgnoreMultipleBodiesFilter \
+    --allow JPH::ShapeFilter \
+    --allow JPH::ReversedShapeFilter \
+    --allow JPH::ContactManifold \
+    --allow JPH::ContactSettings \
+    --allow JPH::ContactListener \
+    --allow JPH::BroadPhaseQuery \
+    --allow JPH::NarrowPhaseQuery \
+    --allow JPH::CharacterBaseSettings \
+    --allow JPH::CharacterBase \
+    --allow JPH::CharacterVirtualSettings \
+    --allow JPH::CharacterContactSettings \
+    --allow JPH::CharacterContactListener \
+    --allow JPH::CharacterVsCharacterCollision \
+    --allow JPH::CharacterVsCharacterCollisionSimple \
+    --allow JPH::CharacterID \
+    --allow JPH::CharacterVirtual \
+    --allow JoltHelpers \
     "${EXTRA_PARSER_FLAGS[@]+"${EXTRA_PARSER_FLAGS[@]}"}" \
     -- \
     -xc++-header \
-    -resource-dir="$("$CLANG_CXX" -print-resource-dir)" \
-    -I"$HELPER_DIR" \
+    -resource-dir="${PARSER_RESOURCE_DIR:-$("$CLANG_CXX" -print-resource-dir)}" \
+    -I"$INIT_DIR" \
+    -I"$JOLT_ROOT" \
     "${EXTRA_PARSER_CXX_FLAGS[@]}"
 
 # Generate the C bindings.
 ../build/mrbind_gen_c \
-    --input jolt_c/output/tmp/parse_result.json \
-    --output-header-dir jolt_c/output/include \
-    --output-source-dir jolt_c/output/src \
+    --input "$OUT/tmp/parse_result.json" \
+    --output-header-dir "$OUT/include" \
+    --output-source-dir "$OUT/src" \
     --helper-name-prefix Jolt_ \
     --helper-macro-name-prefix JOLT_ \
-    --map-path "$HELPER_DIR" jolt \
-    --assume-include-dir "$HELPER_DIR" \
-    "${EXTRA_GEN_FLAGS[@]}"
+    --map-path "$(pwd)/jolt_c" jolt \
+    --map-path "$(pwd)/$JOLT_ROOT" jolt \
+    --map-path "$(cd "$(pwd)/../deps/JoltPhysics" && pwd)" jolt \
+    --assume-include-dir "$(pwd)/jolt_c" \
+    --assume-include-dir "$(cd "$(pwd)/../deps/JoltPhysics" && pwd)" \
+    --force-emit-common-helpers \
+    "${EXTRA_GEN_C_FLAGS[@]}"
 
-# Find all Jolt source files and our wrapper.
+# ODR definitions for static const members that mrbind field-getters ODR-use.
+cat >"$OUT/src/jolt_odr_defs.cpp" <<'EOF'
+#include <Jolt/Physics/Collision/CollisionGroup.h>
+namespace JPH {
+const CollisionGroup::GroupID    CollisionGroup::cInvalidGroup;
+const CollisionGroup::SubGroupID CollisionGroup::cInvalidSubGroup;
+}
+EOF
+
+# Compile shared library: Jolt sources + generated bindings + jolt_init.cpp.
 JOLT_SOURCES=$(find "$JOLT_ROOT/Jolt" -name "*.cpp" | sort)
 
-# Compile the generated bindings + Jolt library into a shared library.
-if [[ $JOLT_SOURCES ]]; then
-    "$CLANG_CXX" \
-        -std=c++17 \
-        -I"$JOLT_ROOT" \
-        -I"$HELPER_DIR" \
-        -Ijolt_c/output/include \
-        -Ijolt_c/output/src \
-        $JOLT_SOURCES \
-        "$HELPER_DIR/jolt_helper.cpp" \
-        $(find jolt_c/output/src -name '*.cpp') \
-        -shared -fPIC \
-        -fvisibility=hidden -fvisibility-inlines-hidden \
-        -o jolt_c/output/libjolt_bindings$SHARED_LIBRARY_EXT \
-        "${EXTRA_CXX_FLAGS[@]}"
-else
-    echo "No Jolt source files found."
+if [[ -z "$JOLT_SOURCES" ]]; then
+    echo "No Jolt source files found in $JOLT_ROOT/Jolt"
     exit 1
 fi
 
-# Compile the test executable.
+"$CLANG_CXX" \
+    -std=c++17 \
+    -I"$JOLT_ROOT" \
+    -I"$INIT_DIR" \
+    -I"$OUT/include" \
+    -I"$OUT/src" \
+    -include "$JOLT_ROOT/Jolt/Jolt.h" \
+    -include "$JOLT_ROOT/Jolt/Core/Atomics.h" \
+    $JOLT_SOURCES \
+    "$INIT_DIR/jolt_init.cpp" \
+    $(find "$OUT/src" -name "*.cpp") \
+    -shared -fPIC \
+    -fvisibility=hidden -fvisibility-inlines-hidden \
+    -o "$OUT/${SHARED_LIBRARY_PREFIX}cjolt${SHARED_LIBRARY_EXT}" \
+    "${EXTRA_CXX_FLAGS[@]}"
+
+# Compile the C example.
 cc \
     -std=c11 -Wall -Wextra \
     jolt_c/example_consumer.c \
-    -Ijolt_c/output/include \
-    -Ljolt_c/output -ljolt_bindings \
-    -o jolt_c/output/example_consumer \
+    -I"$INIT_DIR" \
+    -I"$OUT/include" \
+    -L"$OUT" -lcjolt \
+    -o "$OUT/example_consumer" \
     "${EXTRA_C_FLAGS[@]}"
 
-# Run the test executable.
+# Run the example.
 if [[ $(uname) == Darwin ]]; then
-    DYLD_LIBRARY_PATH=jolt_c/output jolt_c/output/example_consumer
+    DYLD_LIBRARY_PATH="$OUT" "$OUT/example_consumer"
 else
-    LD_LIBRARY_PATH=jolt_c/output jolt_c/output/example_consumer
+    LD_LIBRARY_PATH="$OUT" "$OUT/example_consumer"
 fi

@@ -1,1 +1,0 @@
-../../deps/JoltPhysics/bindings/jolt_helper.cpp

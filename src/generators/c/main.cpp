@@ -224,6 +224,14 @@ int main(int raw_argc, char **raw_argv)
             },
         });
 
+        args_parser.AddFlag("--no-dynamic-cast", {
+            .desc = "Don't generate DynamicDowncastFrom/DynamicDowncastFromOrFail functions. Use this when the target library is compiled with -fno-rtti, since those functions rely on dynamic_cast.",
+            .func = [&](mrbind::CommandLineParser::ArgSpan)
+            {
+                generator.enable_dynamic_cast = false;
+            },
+        });
+
         args_parser.AddFlag("--add-convenience-includes", {
             .desc = "Add more include directives to the output, that are not strictly necessary, but might help the user. This isn't enabled by default because it add too much bloat in large projects. Even if this is enabled, you can define a macro to revert to the default behavior when consuming the headers.",
             .func = [&](mrbind::CommandLineParser::ArgSpan)

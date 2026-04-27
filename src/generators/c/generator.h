@@ -136,6 +136,10 @@ namespace mrbind::C
         // Note that the resulting C++ code will still build even with exceptions turned off, as the exception handling is wrapped in `#if`s.
         bool enable_exceptions_support = true;
 
+        // If false, skip generating DynamicDowncastFrom/DynamicDowncastFromOrFail functions.
+        // Use this when the target library is compiled with -fno-rtti, since those functions rely on dynamic_cast.
+        bool enable_dynamic_cast = true;
+
         // ]
 
         // Output JSON description: [

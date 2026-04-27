@@ -1,54 +1,96 @@
-// Jolt Physics C# binding example.
-// Demonstrates JoltPhysicsSystem with explicit shape and body creation.
+// Jolt Physics C# example.
+// Uses only machine-generated bindings from mrbind/mrbind_gen_c/mrbind_gen_csharp.
+// Zero manual [DllImport] declarations.
 
 class Program
 {
+    const ushort ObjLayerNonMoving = 0;
+    const ushort ObjLayerMoving    = 1;
+
     static void Main()
     {
-        // Create physics system (also initialises Jolt internally)
-        using var sys = new Jolt.JoltPhysicsSystem();
-        sys.SetGravity(0.0, -9.81, 0.0);
+        /* --- Jolt runtime init --- */
+        Jolt.Const_JoltHelpers.Init();
 
-        // Static ground box: 100x2x100 centred at (0,-1,0)
-        using var floorShape = new Jolt.JoltBoxShape(50.0, 1.0, 50.0);
-        using var floorSettings = new Jolt.JoltBodyCreationSettings(
-            floorShape,
-            0.0, -1.0, 0.0,
-            0,       /* JoltMotionType_Static */
-            0u);     /* JoltObjectLayer_NonMoving */
-        using var floorId = sys.CreateAndAddBody(floorSettings, 1); /* JoltActivation_DontActivate */
+        /* --- Allocator and job system --- */
+        using var alloc = new Jolt.JPH.TempAllocatorImpl(64 * 1024 * 1024);
+        using var jobs  = new Jolt.JPH.JobSystemThreadPool(2048, 8, -1);
 
-        // Dynamic sphere: radius 0.5 starting at (0,20,0)
-        using var sphereShape = new Jolt.JoltSphereShape(0.5f);
-        using var sphereSettings = new Jolt.JoltBodyCreationSettings(
-            sphereShape,
-            0.0, 20.0, 0.0,
-            2,       /* JoltMotionType_Dynamic */
-            1u);     /* JoltObjectLayer_Moving */
-        using var sphereId = sys.CreateAndAddBody(sphereSettings, 0); /* JoltActivation_Activate */
+        /* --- Broad-phase layer mapping: NonMoving->BP0, Moving->BP1 --- */
+        using var bpInterface = new Jolt.JPH.BroadPhaseLayerInterfaceTable(2, 2);
+        using var bp0 = new Jolt.JPH.BroadPhaseLayer(0);
+        using var bp1 = new Jolt.JPH.BroadPhaseLayer(1);
+        bpInterface.MapObjectToBroadPhaseLayer(ObjLayerNonMoving, bp0);
+        bpInterface.MapObjectToBroadPhaseLayer(ObjLayerMoving,    bp1);
+
+        /* --- Object layer pair filter: Moving collides with NonMoving and Moving --- */
+        using var pairFilter = new Jolt.JPH.ObjectLayerPairFilterTable(2);
+        pairFilter.EnableCollision(ObjLayerMoving, ObjLayerNonMoving);
+        pairFilter.EnableCollision(ObjLayerMoving, ObjLayerMoving);
+
+        /* --- Object-vs-broadphase filter --- */
+        /* Explicit casts resolve ambiguous user-defined conversions (mutable vs const). */
+        using var objVsBP = new Jolt.JPH.ObjectVsBroadPhaseLayerFilterTable(
+            (Jolt.JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface, 2,
+            (Jolt.JPH.Const_ObjectLayerPairFilterTable)pairFilter, 2);
+
+        /* --- Physics system --- */
+        using var sys = new Jolt.JPH.PhysicsSystem();
+        sys.Init(1024, 0, 1024, 1024,
+            (Jolt.JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface,
+            (Jolt.JPH.Const_ObjectVsBroadPhaseLayerFilterTable)objVsBP,
+            (Jolt.JPH.Const_ObjectLayerPairFilterTable)pairFilter);
+        /* Default gravity is (0, -9.81, 0) -- no SetGravity needed */
+
+        var bi = sys.GetBodyInterface();
+
+        /* --- Static ground box: 100x2x100 centred at (0,-1,0) --- */
+        var floorSS = Jolt.Const_JoltHelpers.BoxShapeSettingsWithHalfExtent(50f, 1f, 50f);
+        using var floorCS = new Jolt.JPH.BodyCreationSettings();
+        floorCS.SetShapeSettings((Jolt.JPH.Const_BoxShapeSettings)floorSS!);
+        Jolt.Const_JoltHelpers.BodyCreationSettingsSetPosition(floorCS, 0f, -1f, 0f);
+        floorCS.mMotionType  = Jolt.JPH.EMotionType.Static;
+        floorCS.mObjectLayer = ObjLayerNonMoving;
+        var floorId = bi.CreateAndAddBody(floorCS, Jolt.JPH.EActivation.DontActivate);
+
+        /* --- Dynamic sphere: radius 0.5 starting at (0,20,0) --- */
+        /* No 'using': sphereCS takes Ref<> ownership via SetShapeSettings; C# must not double-free. */
+        var sphereSS = new Jolt.JPH.SphereShapeSettings();
+        sphereSS.mRadius = 0.5f;
+        using var sphereCS = new Jolt.JPH.BodyCreationSettings();
+        sphereCS.SetShapeSettings((Jolt.JPH.Const_SphereShapeSettings)sphereSS);
+        GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
+        Jolt.Const_JoltHelpers.BodyCreationSettingsSetPosition(sphereCS, 0f, 20f, 0f);
+        sphereCS.mMotionType  = Jolt.JPH.EMotionType.Dynamic;
+        sphereCS.mObjectLayer = ObjLayerMoving;
+        var sphereId = bi.CreateAndAddBody(sphereCS, Jolt.JPH.EActivation.Activate);
 
         sys.OptimizeBroadPhase();
 
-        // Simulate 120 steps (2 seconds at 60 Hz)
+        /* --- Simulate 120 steps (2 seconds at 60 Hz) --- */
         Console.WriteLine("Simulating sphere falling under gravity...");
         for (int i = 0; i < 120; i++)
         {
-            sys.Update(1.0f / 60.0f, 1);
+            sys.Update(1f / 60f, 1, alloc, jobs);
 
             if (i % 20 == 0)
             {
-                using var pos = sys.GetBodyPosition(sphereId);
-                double y = pos.y;
-                bool active = sys.IsBodyActive(sphereId);
+                float y      = Jolt.Const_JoltHelpers.BodyInterfaceGetPositionY(bi, sphereId);
+                bool  active = bi.IsActive(sphereId);
                 Console.WriteLine($"  step {i,3}: y = {y:F4}  active={active}");
             }
         }
 
-        // Print body counts
-        Console.WriteLine($"Bodies: total={sys.GetNumBodies()}  active={sys.GetNumActiveBodies()}");
+        /* --- Print final body count --- */
+        Console.WriteLine($"Bodies: total={sys.GetNumBodies()}");
 
-        // Cleanup (using blocks handle Dispose; body IDs are freed last)
-        sys.RemoveAndDestroyBody(sphereId);
-        sys.RemoveAndDestroyBody(floorId);
+        /* --- Cleanup --- */
+        bi.RemoveBody(sphereId);
+        bi.DestroyBody(sphereId);
+        bi.RemoveBody(floorId);
+        bi.DestroyBody(floorId);
+
+        /* sys, objVsBP, pairFilter, bpInterface, jobs, alloc disposed by using blocks */
+        Jolt.Const_JoltHelpers.Shutdown();
     }
 }

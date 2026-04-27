@@ -2131,6 +2131,23 @@ namespace mrbind::C
         return true;
     }
 
+    // Returns the most portable type string for a parsed type: prefers `pretty`
+    // (typedef-preserving, e.g. `size_t`) over the platform-expanded `canonical`
+    // form (e.g. `unsigned long`) when `pretty` is a plain C identifier with no
+    // namespace qualifiers or template arguments. This prevents cross-platform
+    // compile errors when the binding is compiled on a target whose concrete
+    // definition of the typedef differs from the host where the binding was generated.
+    static const std::string &PortableTypeStr(const mrbind::Type &t)
+    {
+        const auto &p = t.pretty;
+        if (!p.empty() && p != t.canonical &&
+            p.find(' ') == std::string::npos &&
+            p.find(':') == std::string::npos &&
+            p.find('<') == std::string::npos)
+            return p;
+        return t.canonical;
+    }
+
     std::string Generator::MakeFreeFuncNameForOverloadedOperator(const ClassEntity *enclosing_class, std::variant<const FuncEntity *, const ClassMethod *> parsed_func, bool fallback) const
     {
         return std::visit([&](const auto &elem)
@@ -2246,7 +2263,7 @@ namespace mrbind::C
             }
 
             for (const FuncParam &param : elem->params)
-                HandleParamType(ParseTypeOrThrow(param.type.canonical));
+                HandleParamType(ParseTypeOrThrow(PortableTypeStr(param.type)));
 
             return MakePublicHelperName(ret);
         }, parsed_func);
@@ -2409,7 +2426,7 @@ namespace mrbind::C
 
     void Generator::EmitFuncParams::SetReturnTypeFromParsedFunc(Generator &self, const BasicReturningFunc &new_func)
     {
-        cpp_return_type = self.ParseTypeOrThrow(new_func.return_type.canonical);
+        cpp_return_type = self.ParseTypeOrThrow(PortableTypeStr(new_func.return_type));
 
         // This can arrive `const` from the parser if it's `const` in the input.
         // I'm doing this here instead of in `EmitFunction()`, because custom bindings should never do this.
@@ -2733,7 +2750,7 @@ namespace mrbind::C
     {
         is_noexcept = true;
 
-        const cppdecl::Type field_type = self.ParseTypeOrThrow(new_field.type.canonical);
+        const cppdecl::Type field_type = self.ParseTypeOrThrow(PortableTypeStr(new_field.type));
         const cppdecl::QualifiedName class_cpp_type = self.ParseQualNameOrThrow(new_class.full_type);
         const std::string class_cpp_type_str = self.CppdeclToCode(class_cpp_type);
         const std::string class_cpp_type_str_deco = self.CppdeclToCodeForComments(class_cpp_type);
@@ -4027,9 +4044,31 @@ namespace mrbind::C
             }
         });
 
-        // Complain if no fields. C doesn't have empty structs.
+        // If no fields were emitted (e.g. all fields are private), fall back to a raw byte array
+        // with the correct size so the struct can still be used in arrays with the right layout.
         if (total_size == 0)
-            throw std::runtime_error("In exposed C struct `" + std::string(c_type_str) + "`: The struct has no known fields. C doesn't support empty structures.");
+        {
+            if (expected_size_and_alignment.size == std::size_t(-1) || expected_size_and_alignment.size == 0)
+                throw std::runtime_error("In exposed C struct `" + std::string(c_type_str) + "`: The struct has no known fields and no expected size is available. C doesn't support empty structures.");
+
+            const std::size_t byte_count = expected_size_and_alignment.size;
+            file.header.contents += "    unsigned char _data[" + std::to_string(byte_count) + "];\n";
+            total_size = byte_count;
+            total_alignment = expected_size_and_alignment.alignment != std::size_t(-1) ? expected_size_and_alignment.alignment : 1;
+
+            if (class_desc)
+            {
+                CInterop::ClassField &new_field = class_desc->fields.emplace_back();
+                new_field.is_static = false;
+                new_field.type = "unsigned char[" + std::to_string(byte_count) + "]";
+                new_field.name = "_data";
+                new_field.full_name = "_data";
+                new_field.layout.emplace();
+                new_field.layout->byte_size = byte_count;
+                new_field.layout->byte_alignment = total_alignment;
+                new_field.layout->byte_offset = 0;
+            }
+        }
 
         // Check the final alignment, if specified.
         if (expected_size_and_alignment.alignment != std::size_t(-1) && total_alignment != expected_size_and_alignment.alignment)
@@ -5334,6 +5373,10 @@ namespace mrbind::C
                                 {
                                     // Virtual downcasts must be dynamic.
                                     if (is_downcast && !is_dynamic && (base_kind == CInterop::InheritanceInfo::Kind::true_virt || base_kind == CInterop::InheritanceInfo::Kind::virt_path))
+                                        continue;
+
+                                    // If dynamic cast is disabled (e.g. target lib uses -fno-rtti), skip.
+                                    if (is_dynamic && !self.enable_dynamic_cast)
                                         continue;
 
                                     // If this is a dynamic cast, then the source type must be polymorphic.
