@@ -49,7 +49,7 @@ class Program
         var floorSS = new JPH.BoxShapeSettings(floorHalfExtent);
         using var floorCS = new JPH.BodyCreationSettings();
         floorCS.SetShapeSettings((JPH.Const_BoxShapeSettings)floorSS);
-        GC.SuppressFinalize(floorSS); /* floorCS now owns floorSS via Ref<> */
+        // GC.SuppressFinalize(floorSS); /* floorCS now owns floorSS via Ref<> */
         floorCS.mPosition.Set(0f, -1f, 0f);
         floorCS.mMotionType  = JPH.EMotionType.Static;
         floorCS.mObjectLayer = ObjLayerNonMoving;
@@ -61,7 +61,7 @@ class Program
         sphereSS.mRadius = 0.5f;
         using var sphereCS = new JPH.BodyCreationSettings();
         sphereCS.SetShapeSettings((JPH.Const_SphereShapeSettings)sphereSS);
-        GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
+        // GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
         sphereCS.mPosition.Set(0f, 20f, 0f);
         sphereCS.mMotionType  = JPH.EMotionType.Dynamic;
         sphereCS.mObjectLayer = ObjLayerMoving;
