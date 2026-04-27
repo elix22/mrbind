@@ -40,15 +40,17 @@ class Program
             (Jolt.JPH.Const_BroadPhaseLayerInterfaceTable)bpInterface,
             (Jolt.JPH.Const_ObjectVsBroadPhaseLayerFilterTable)objVsBP,
             (Jolt.JPH.Const_ObjectLayerPairFilterTable)pairFilter);
-        /* Default gravity is (0, -9.81, 0) -- no SetGravity needed */
+        { using var gravity = new Jolt.JPH.Vec3(0f, -9.81f, 0f); sys.SetGravity(gravity); }
 
         var bi = sys.GetBodyInterface();
 
         /* --- Static ground box: 100x2x100 centred at (0,-1,0) --- */
-        var floorSS = Jolt.Const_JoltHelpers.BoxShapeSettingsWithHalfExtent(50f, 1f, 50f);
+        using var floorHalfExtent = new Jolt.JPH.Vec3(50f, 1f, 50f);
+        var floorSS = new Jolt.JPH.BoxShapeSettings(floorHalfExtent);
         using var floorCS = new Jolt.JPH.BodyCreationSettings();
-        floorCS.SetShapeSettings((Jolt.JPH.Const_BoxShapeSettings)floorSS!);
-        Jolt.Const_JoltHelpers.BodyCreationSettingsSetPosition(floorCS, 0f, -1f, 0f);
+        floorCS.SetShapeSettings((Jolt.JPH.Const_BoxShapeSettings)floorSS);
+        GC.SuppressFinalize(floorSS); /* floorCS now owns floorSS via Ref<> */
+        floorCS.mPosition.Set(0f, -1f, 0f);
         floorCS.mMotionType  = Jolt.JPH.EMotionType.Static;
         floorCS.mObjectLayer = ObjLayerNonMoving;
         var floorId = bi.CreateAndAddBody(floorCS, Jolt.JPH.EActivation.DontActivate);
@@ -60,7 +62,7 @@ class Program
         using var sphereCS = new Jolt.JPH.BodyCreationSettings();
         sphereCS.SetShapeSettings((Jolt.JPH.Const_SphereShapeSettings)sphereSS);
         GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
-        Jolt.Const_JoltHelpers.BodyCreationSettingsSetPosition(sphereCS, 0f, 20f, 0f);
+        sphereCS.mPosition.Set(0f, 20f, 0f);
         sphereCS.mMotionType  = Jolt.JPH.EMotionType.Dynamic;
         sphereCS.mObjectLayer = ObjLayerMoving;
         var sphereId = bi.CreateAndAddBody(sphereCS, Jolt.JPH.EActivation.Activate);
@@ -75,7 +77,8 @@ class Program
 
             if (i % 20 == 0)
             {
-                float y      = Jolt.Const_JoltHelpers.BodyInterfaceGetPositionY(bi, sphereId);
+                using var pos = bi.GetCenterOfMassPosition(sphereId);
+                float y      = pos.GetY();
                 bool  active = bi.IsActive(sphereId);
                 Console.WriteLine($"  step {i,3}: y = {y:F4}  active={active}");
             }

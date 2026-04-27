@@ -1,4 +1,5 @@
 #include <common.h>
+#include <jolt/Jolt/Math/Vec3.h>
 #include <jolt/Jolt/Core/TempAllocator.h>
 #include <jolt/Jolt/Core/JobSystemThreadPool.h>
 #include <jolt/Jolt/Physics/PhysicsSystem.h>
@@ -78,18 +79,24 @@ int main(void)
             objVsBP),
         JPH_ObjectLayerPairFilterTable_UpcastTo_JPH_ObjectLayerPairFilter(
             pairFilter));
-    /* Default gravity is (0, -9.81, 0) — no explicit SetGravity needed */
+    {
+        JPH_Vec3 *gravity = JPH_Vec3_Construct_3(0.0f, -9.81f, 0.0f);
+        JPH_PhysicsSystem_SetGravity(sys, gravity);
+        JPH_Vec3_Destroy(gravity);
+    }
 
     JPH_BodyInterface *bi = JPH_PhysicsSystem_GetBodyInterface_mut(sys);
 
     /* --- Static ground box: 100x2x100 centred at (0,-1,0) --- */
-    JPH_BoxShapeSettings *floorSS =
-        JoltHelpers_BoxShapeSettings_WithHalfExtent(50.0f, 1.0f, 50.0f);
+    JPH_Vec3 *floorHalfExtent = JPH_Vec3_Construct_3(50.0f, 1.0f, 50.0f);
+    JPH_BoxShapeSettings *floorSS = JPH_BoxShapeSettings_Construct(floorHalfExtent, NULL, NULL);
+    JPH_Vec3_Destroy(floorHalfExtent);
     JPH_BodyCreationSettings *floorCS = JPH_BodyCreationSettings_DefaultConstruct();
     JPH_BodyCreationSettings_SetShapeSettings(
         floorCS,
         JPH_BoxShapeSettings_MutableUpcastTo_JPH_ShapeSettings(floorSS));
-    JoltHelpers_BodyCreationSettings_SetPosition(floorCS, 0.0f, -1.0f, 0.0f);
+
+    JPH_Vec3_Set(JPH_BodyCreationSettings_GetMutable_mPosition(floorCS), 0.0f, -1.0f, 0.0f);
     JPH_BodyCreationSettings_Set_mMotionType(floorCS, JPH_EMotionType_Static);
     JPH_BodyCreationSettings_Set_mObjectLayer(floorCS, OBJ_LAYER_NON_MOVING);
     JPH_BodyID floorId = JPH_BodyInterface_CreateAndAddBody(
@@ -104,7 +111,7 @@ int main(void)
     JPH_BodyCreationSettings_SetShapeSettings(
         sphereCS,
         JPH_SphereShapeSettings_MutableUpcastTo_JPH_ShapeSettings(sphereSS));
-    JoltHelpers_BodyCreationSettings_SetPosition(sphereCS, 0.0f, 20.0f, 0.0f);
+    JPH_Vec3_Set(JPH_BodyCreationSettings_GetMutable_mPosition(sphereCS), 0.0f, 20.0f, 0.0f);
     JPH_BodyCreationSettings_Set_mMotionType(sphereCS, JPH_EMotionType_Dynamic);
     JPH_BodyCreationSettings_Set_mObjectLayer(sphereCS, OBJ_LAYER_MOVING);
     JPH_BodyID sphereId = JPH_BodyInterface_CreateAndAddBody(
@@ -125,7 +132,9 @@ int main(void)
 
         if (i % 20 == 0)
         {
-            float y = JoltHelpers_BodyInterface_GetPositionY(bi, &sphereId);
+            JPH_Vec3 *pos = JPH_BodyInterface_GetCenterOfMassPosition(bi, &sphereId);
+            float y = JPH_Vec3_GetY(pos);
+            JPH_Vec3_Destroy(pos);
             int active = JPH_BodyInterface_IsActive(bi, &sphereId);
             printf("  step %3d: y = %.4f  active=%d\n", i, (double)y, active);
         }
