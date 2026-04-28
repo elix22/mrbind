@@ -5823,6 +5823,7 @@ namespace mrbind::C
             output_desc->platform_info = data.platform_info;
 
             output_desc->exception_handling_enabled = enable_exceptions_support;
+            output_desc->dynamic_cast_enabled = enable_dynamic_cast;
         }
 
         { // Construct the `type_alt_spelling_to_canonical` mapping.

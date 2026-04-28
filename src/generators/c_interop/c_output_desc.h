@@ -682,6 +682,10 @@ namespace mrbind::CInterop
 
             // Do the C bindings have exception handling enabled?
             (bool)(exception_handling_enabled, false)
+
+            // Do the C bindings have dynamic_cast support enabled?
+            // When false, no `DynamicDowncastFrom` functions are generated.
+            (bool)(dynamic_cast_enabled, true)
         )
 
         [[nodiscard]] const TypeDesc *FindTypeOpt(std::string_view type)

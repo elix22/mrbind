@@ -6537,6 +6537,9 @@ namespace mrbind::CSharp
 
                                 const auto &base_desc = std::get<CInterop::TypeKinds::Class>(c_desc.cpp_types.Map().at(base_name).var);
 
+                                if (!c_desc.dynamic_cast_enabled)
+                                    continue; // Dynamic cast functions were disabled in the C generator (--no-dynamic-cast).
+
                                 if (!base_desc.is_polymorphic)
                                     continue; // For now we don't do static downcasts, as they are unsafe.
 
