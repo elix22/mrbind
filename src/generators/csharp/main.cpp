@@ -223,6 +223,18 @@ int main(int argc, char **argv)
         },
     });
 
+    args_parser.AddFlag("--intrinsic-ref-counted-base", {
+        .allow_repeat = true,
+        .arg_names = {"cpp_name_prefix"},
+        .desc = "C++ qualified name prefix of a ref-counted base class (e.g. \"JPH::RefTarget\"). "
+                "Classes that transitively inherit from a base matching this prefix will call AddRef() "
+                "on construction and Release() on disposal, instead of the generated Destroy() function.",
+        .func = [&](mrbind::CommandLineParser::ArgSpan args)
+        {
+            generator.intrinsic_ref_counted_base_prefixes.push_back(std::string(args.front()));
+        },
+    });
+
     mrbind::CommandLineArgsAsUtf8 args(argc, argv);
     args_parser.Parse(args.argc, args.argv);
 

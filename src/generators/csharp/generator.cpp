@@ -793,6 +793,40 @@ namespace mrbind::CSharp
         return iter->second;
     }
 
+    std::string Generator::FindRefCountedBaseCNameIfAny(const std::string &cpp_type_str)
+    {
+        if (intrinsic_ref_counted_base_prefixes.empty())
+            return {};
+
+        const auto *type_desc = c_desc.FindTypeOpt(cpp_type_str);
+        if (!type_desc)
+            return {};
+
+        const auto *cl = std::get_if<CInterop::TypeKinds::Class>(&type_desc->var);
+        if (!cl)
+            return {};
+
+        for (const auto &base_name : cl->inheritance_info.bases_indirect.Vec())
+        {
+            if (cl->inheritance_info.bases_indirect.Map().at(base_name) == CInterop::InheritanceInfo::Kind::ambiguous)
+                continue;
+
+            for (const auto &prefix : intrinsic_ref_counted_base_prefixes)
+            {
+                if (base_name == prefix || base_name.starts_with(prefix + "<") || base_name.starts_with(prefix + "::"))
+                {
+                    const auto *base_type = c_desc.FindTypeOpt(base_name);
+                    if (base_type)
+                    {
+                        if (const auto *base_cl = std::get_if<CInterop::TypeKinds::Class>(&base_type->var))
+                            return base_cl->c_name;
+                    }
+                }
+            }
+        }
+        return {};
+    }
+
     cppdecl::QualifiedName Generator::AdjustCppNamespaces(cppdecl::QualifiedName name) const
     {
         // Apply any replacements.
@@ -4817,6 +4851,23 @@ namespace mrbind::CSharp
                         else
                             file.WriteString("_UnderlyingPtr = " + ctor_expr + ";\n");
                         file.WriteString(post_ctor_statements);
+
+                        // For intrinsic ref-counted classes (e.g., Jolt's RefTarget<T>), claim ownership
+                        // by incrementing the ref count. Dispose() will call Release() to decrement it.
+                        if (!ctor_class_backed_by_shared_ptr)
+                        {
+                            const std::string ctor_ref_base = generator.FindRefCountedBaseCNameIfAny(func_like.ret.cpp_type);
+                            if (!ctor_ref_base.empty())
+                            {
+                                auto dllimport_upcast = generator.MakeDllImportDecl(class_desc.output_file, class_desc.c_name + "_UpcastTo_" + ctor_ref_base, "void *", "_Underlying *_this");
+                                auto dllimport_addref = generator.MakeDllImportDecl(class_desc.output_file, ctor_ref_base + "_AddRef", "void", "void *_this");
+                                file.WriteString(
+                                    dllimport_upcast.dllimport_decl +
+                                    dllimport_addref.dllimport_decl +
+                                    dllimport_addref.csharp_name + "(" + dllimport_upcast.csharp_name + "(_UnderlyingPtr));\n"
+                                );
+                            }
+                        }
                     }
 
                     file.WriteString(lifetime_statements);
@@ -6345,8 +6396,14 @@ namespace mrbind::CSharp
                     {
                         bool using_generic_free = class_desc.kind == CInterop::ClassKind::exposed_struct && !shared_ptr_desc;
 
+                        // Check if this class uses intrinsic ref counting (e.g., inherits from Jolt's RefTarget<T>).
+                        // In that case, disposal must call Release() instead of Destroy() to correctly participate in the ref count.
+                        const std::string ref_counted_base_c_name = (!shared_ptr_desc && !using_generic_free)
+                            ? FindRefCountedBaseCNameIfAny(cpp_type)
+                            : std::string{};
+
                         std::optional<DllImportDeclStrings> dllimport_free;
-                        if (!using_generic_free)
+                        if (!using_generic_free && ref_counted_base_c_name.empty())
                         {
                             dllimport_free =
                                 shared_ptr_desc
@@ -6358,20 +6415,38 @@ namespace mrbind::CSharp
 
                         file.WriteString("protected virtual unsafe void Dispose(bool disposing)\n");
                         file.PushScope();
-                        file.WriteString(
-                            // Notice the use of `_IsOwningVal` instead of `_IsOwning`. They mean the same thing if shared pointers are not involved,
-                            //   but if they ARE involved, then `_IsOwning` will check if the shared pointer owns the target or not,
-                            //   while `_IsOwningVal` will check if we own the shared pointer itself or not.
-                            // Here `_UnderlyingPtr` should never normally be null, unless something goes really wrong during construction,
-                            //   but `_IsOwningVal` being false is common.
-                            "if (" + std::string(shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + " is null || !_IsOwningVal)\n"
-                            "    return;\n" +
-                            // Here we'd have `if (disposing)` where we would explicitly `.Dispose()` managed data members, if we had any.
-                            (dllimport_free ? dllimport_free->dllimport_decl : "") +
-                            // No exception handling here. I'm not willing to recover from destructors throwing.
-                            (using_generic_free ? RequestHelper("_Free") : dllimport_free.value().csharp_name) + "(" + (using_generic_free ? "(void *)" : "") + (shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + ");\n" +
-                            (shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + " = null;\n"
-                        );
+                        if (!ref_counted_base_c_name.empty())
+                        {
+                            // This class inherits from a ref-counted base (e.g., Jolt's RefTarget<T>).
+                            // Use Release() so the object is only deleted when the ref count reaches zero.
+                            auto dllimport_upcast = MakeDllImportDecl(class_desc.output_file, class_desc.c_name + "_UpcastTo_" + ref_counted_base_c_name, "void *", "_Underlying *_this");
+                            auto dllimport_release = MakeDllImportDecl(class_desc.output_file, ref_counted_base_c_name + "_Release", "void", "void *_this");
+                            file.WriteString(
+                                "if (_UnderlyingPtr is null || !_IsOwningVal)\n"
+                                "    return;\n" +
+                                dllimport_upcast.dllimport_decl +
+                                dllimport_release.dllimport_decl +
+                                dllimport_release.csharp_name + "(" + dllimport_upcast.csharp_name + "(_UnderlyingPtr));\n"
+                                "_UnderlyingPtr = null;\n"
+                            );
+                        }
+                        else
+                        {
+                            file.WriteString(
+                                // Notice the use of `_IsOwningVal` instead of `_IsOwning`. They mean the same thing if shared pointers are not involved,
+                                //   but if they ARE involved, then `_IsOwning` will check if the shared pointer owns the target or not,
+                                //   while `_IsOwningVal` will check if we own the shared pointer itself or not.
+                                // Here `_UnderlyingPtr` should never normally be null, unless something goes really wrong during construction,
+                                //   but `_IsOwningVal` being false is common.
+                                "if (" + std::string(shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + " is null || !_IsOwningVal)\n"
+                                "    return;\n" +
+                                // Here we'd have `if (disposing)` where we would explicitly `.Dispose()` managed data members, if we had any.
+                                (dllimport_free ? dllimport_free->dllimport_decl : "") +
+                                // No exception handling here. I'm not willing to recover from destructors throwing.
+                                (using_generic_free ? RequestHelper("_Free") : dllimport_free.value().csharp_name) + "(" + (using_generic_free ? "(void *)" : "") + (shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + ");\n" +
+                                (shared_ptr_desc ? "_UnderlyingSharedPtr" : "_UnderlyingPtr") + " = null;\n"
+                            );
+                        }
 
                         // Here we'd call `base.Dispose(disposing);` if we had a base class.
 

@@ -445,6 +445,11 @@ namespace mrbind::CSharp
         // The implementation of this is incomplete.
         bool transparent_shared_pointers = false;
 
+        // C++ qualified name prefixes for "intrinsic ref-counted" base classes (e.g. "JPH::RefTarget").
+        // Classes whose indirect bases include a name matching one of these prefixes will use
+        // AddRef()/Release() for lifecycle management instead of Destroy().
+        std::vector<std::string> intrinsic_ref_counted_base_prefixes;
+
         // ]
 
         // Maps relative file paths (without extensions) to the file descriptions and contents.
@@ -641,6 +646,11 @@ namespace mrbind::CSharp
         // Throws if called too early. This can only be called after all fields for this class are emitted (at least if `--fat-objects` is used, without this flag this is currently a no-op).
         // The result is guaranteed to be sufficiently braced to be used as the body of an `if`.
         [[nodiscard]] std::string_view GetCtorFinalizationStatements(const cppdecl::QualifiedName &cpp_class, bool is_const);
+
+        // If the C++ type `cpp_type_str` inherits (directly or indirectly) from a class whose name matches
+        // one of the `intrinsic_ref_counted_base_prefixes`, returns the C name of that base class.
+        // Returns an empty string if no such base is found.
+        [[nodiscard]] std::string FindRefCountedBaseCNameIfAny(const std::string &cpp_type_str);
 
 
         // Adjusts a name to apply any `--remove-namespace` and `--force-namespace` flags.

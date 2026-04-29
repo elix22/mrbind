@@ -46,22 +46,19 @@ class Program
 
         /* --- Static ground box: 100x2x100 centred at (0,-1,0) --- */
         using var floorHalfExtent = new JPH.Vec3(50f, 1f, 50f);
-        var floorSS = new JPH.BoxShapeSettings(floorHalfExtent);
+        using var floorSS = new JPH.BoxShapeSettings(floorHalfExtent);
         using var floorCS = new JPH.BodyCreationSettings();
         floorCS.SetShapeSettings((JPH.Const_BoxShapeSettings)floorSS);
-        // GC.SuppressFinalize(floorSS); /* floorCS now owns floorSS via Ref<> */
         floorCS.mPosition.Set(0f, -1f, 0f);
         floorCS.mMotionType  = JPH.EMotionType.Static;
         floorCS.mObjectLayer = ObjLayerNonMoving;
         var floorId = bi.CreateAndAddBody(floorCS, JPH.EActivation.DontActivate);
 
         /* --- Dynamic sphere: radius 0.5 starting at (0,20,0) --- */
-        /* No 'using': sphereCS takes Ref<> ownership via SetShapeSettings; C# must not double-free. */
-        var sphereSS = new JPH.SphereShapeSettings();
+        using var sphereSS = new JPH.SphereShapeSettings();
         sphereSS.mRadius = 0.5f;
         using var sphereCS = new JPH.BodyCreationSettings();
         sphereCS.SetShapeSettings((JPH.Const_SphereShapeSettings)sphereSS);
-        // GC.SuppressFinalize(sphereSS); /* sphereCS now owns sphereSS via Ref<> */
         sphereCS.mPosition.Set(0f, 20f, 0f);
         sphereCS.mMotionType  = JPH.EMotionType.Dynamic;
         sphereCS.mObjectLayer = ObjLayerMoving;
