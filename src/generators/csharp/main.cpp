@@ -235,6 +235,19 @@ int main(int argc, char **argv)
         },
     });
 
+    args_parser.AddFlag("--method-precondition", {
+        .allow_repeat = true,
+        .arg_names = {"c_name", "csharp_condition", "message"},
+        .desc = "Inject a runtime precondition guard into the named C binding function. "
+                "`c_name` is the C function name (e.g. `JPH_Body_GetInverseInertia`). "
+                "`csharp_condition` is a C# boolean expression evaluated on `this` — if it is false, "
+                "a `System.InvalidOperationException` is thrown with `message` before the native call.",
+        .func = [&](mrbind::CommandLineParser::ArgSpan args)
+        {
+            generator.method_preconditions.emplace(std::string(args[0]), std::make_pair(std::string(args[1]), std::string(args[2])));
+        },
+    });
+
     mrbind::CommandLineArgsAsUtf8 args(argc, argv);
     args_parser.Parse(args.argc, args.argv);
 

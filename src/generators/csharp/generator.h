@@ -450,6 +450,12 @@ namespace mrbind::CSharp
         // AddRef()/Release() for lifecycle management instead of Destroy().
         std::vector<std::string> intrinsic_ref_counted_base_prefixes;
 
+        // Maps C binding function names (e.g. "JPH_Body_GetInverseInertia") to a {C# condition expr, message} pair.
+        // When set for a function, the generator injects `if (!(condition)) throw new InvalidOperationException(message);`
+        // at the top of that function's body, before any native call.
+        // Populated by the `--method-precondition` CLI flag.
+        std::map<std::string, std::pair<std::string, std::string>, std::less<>> method_preconditions;
+
         // ]
 
         // Maps relative file paths (without extensions) to the file descriptions and contents.

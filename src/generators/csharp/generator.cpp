@@ -4688,6 +4688,13 @@ namespace mrbind::CSharp
                 }
             }
 
+            // Inject method precondition guard if configured (via `--method-precondition`).
+            {
+                auto it = generator.method_preconditions.find(func_like.c_name);
+                if (it != generator.method_preconditions.end())
+                    extra_statements = "if (!(" + it->second.first + "))\n    throw new System.InvalidOperationException(" + EscapeQuoteString(it->second.second) + ");\n" + extra_statements;
+            }
+
             // Extra statements from exception handling?
             if (must_handle_exceptions)
             {
