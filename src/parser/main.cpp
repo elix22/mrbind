@@ -813,16 +813,25 @@ namespace mrbind
             }
             else
             {
-                // If the default argument is an enum constant reference, use the fully-qualified name so it
-                // works outside the class scope in generated bindings.
+                // If the default argument is an enum constant or static member variable reference,
+                // use the fully-qualified name so it works outside the class scope in generated bindings.
                 bool used_qualified_name = false;
                 if (const auto *dre = clang::dyn_cast<clang::DeclRefExpr>(default_arg->IgnoreImpCasts()))
                 {
+                    const clang::NamedDecl *named_decl = nullptr;
                     if (const auto *ecd = clang::dyn_cast<clang::EnumConstantDecl>(dre->getDecl()))
+                        named_decl = ecd;
+                    else if (const auto *vd = clang::dyn_cast<clang::VarDecl>(dre->getDecl()))
+                    {
+                        // Qualify static data members so they work outside the class scope.
+                        if (vd->isStaticDataMember())
+                            named_decl = vd;
+                    }
+                    if (named_decl)
                     {
                         std::string qualified_name;
                         llvm::raw_string_ostream qss(qualified_name);
-                        ecd->printQualifiedName(qss, printing_policy);
+                        named_decl->printQualifiedName(qss, printing_policy);
                         if (qualified_name != out_arg->original_spelling && qualified_name.find("::") != std::string::npos)
                         {
                             out_arg->as_cpp_expression = std::move(qualified_name);
