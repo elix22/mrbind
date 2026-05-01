@@ -461,6 +461,31 @@ namespace mrbind::C
 
         ret.c_comment = "/// Constructs an empty (default-constructed) instance.";
 
+        // Zero-initialize the object's memory before calling the constructor so that
+        // any fields left uninitialized by the C++ default constructor are consistently
+        // zero on all platforms (not just macOS, where the allocator incidentally zeros pages).
+        // Pattern: allocate+construct via normal `new` (respects custom operator new),
+        // then explicitly destruct (without freeing), zero the memory, and placement-new
+        // in the zeroed storage — so any uninitialized POD members become 0.
+        //
+        // Only apply to heap-allocated (opaque pointer) types. For `--expose-as-struct`
+        // (same-layout) types the C function returns a value, not a pointer, so we let the
+        // generator use the regular MRBINDC_BIT_CAST path.
+        if (!is_same_layout_struct)
+        {
+            ret.extra_headers.stdlib_in_source_file.insert("cstring"); // For std::memset.
+            ret.extra_headers.stdlib_in_source_file.insert("new");     // For placement new.
+            ret.make_return_expr = [cpp_type_str, c_type_name_str = c_type_name](std::string_view /*expr*/) -> std::string
+            {
+                return
+                    "using _mrbind_T = " + cpp_type_str + ";\n"
+                    "_mrbind_T* _mrbind_ptr = new _mrbind_T();\n"
+                    "_mrbind_ptr->~_mrbind_T();\n"
+                    "std::memset(_mrbind_ptr, 0, sizeof(_mrbind_T));\n"
+                    "return (" + c_type_name_str + "*)(::new(_mrbind_ptr) _mrbind_T());";
+            };
+        }
+
         return ret;
     }
 

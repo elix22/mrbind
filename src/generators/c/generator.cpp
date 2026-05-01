@@ -4267,6 +4267,8 @@ namespace mrbind::C
 
         binder.mark_polymorphic = class_desc.is_polymorphic;
 
+        binder.is_same_layout_struct = class_desc.is_same_layout_struct;
+
         return binder;
     }
 

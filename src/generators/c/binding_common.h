@@ -27,6 +27,10 @@ namespace mrbind::C
         // This defaults to false. This only matters for the C interop, to allow clients to call `dynamic_cast`s.
         bool mark_polymorphic = false;
 
+        // Set to true when this binder is used for a `--expose-as-struct` (same-layout struct) type.
+        // In that case DefaultConstruct returns a value, not a pointer, so the heap-alloc zero-init pattern must not be used.
+        bool is_same_layout_struct = false;
+
         // Set to true if this type has a sugared constructor, that preserves references to its parameters.
         bool sugared_constructor_preserves_reference = false;
 
