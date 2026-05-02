@@ -248,6 +248,18 @@ int main(int argc, char **argv)
         },
     });
 
+    args_parser.AddFlag("--array-overload-param", {
+        .allow_repeat = true,
+        .arg_names = {"c_name", "array_param", "size_param"},
+        .desc = "Emit an additional C# overload for the named C function where `array_param` "
+                "becomes a `T[]` managed array and `size_param` is dropped (replaced by `array.Length`). "
+                "`c_name` is the C function name. `array_param` and `size_param` are the C parameter names.",
+        .func = [&](mrbind::CommandLineParser::ArgSpan args)
+        {
+            generator.array_overload_params[std::string(args[0])].emplace_back(std::string(args[1]), std::string(args[2]));
+        },
+    });
+
     mrbind::CommandLineArgsAsUtf8 args(argc, argv);
     args_parser.Parse(args.argc, args.argv);
 

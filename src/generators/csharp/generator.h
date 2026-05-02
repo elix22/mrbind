@@ -456,6 +456,12 @@ namespace mrbind::CSharp
         // Populated by the `--method-precondition` CLI flag.
         std::map<std::string, std::pair<std::string, std::string>, std::less<>> method_preconditions;
 
+        // Maps C binding function names to a list of (array_param_name, size_param_name) pairs.
+        // When set, emits an additional C# overload where the specified parameter becomes a `T[]` managed array
+        // and the size parameter is dropped (replaced by `array.Length`).
+        // Populated by the `--array-overload-param` CLI flag.
+        std::map<std::string, std::vector<std::pair<std::string, std::string>>, std::less<>> array_overload_params;
+
         // ]
 
         // Maps relative file paths (without extensions) to the file descriptions and contents.

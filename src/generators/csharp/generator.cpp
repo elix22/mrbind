@@ -4930,6 +4930,117 @@ namespace mrbind::CSharp
 
             // End function body.
             file.PopScope();
+
+            // Emit array overloads if this function has array parameters configured via `--array-overload-param`.
+            if (!is_property && !is_ctor)
+            {
+                auto it = generator.array_overload_params.find(func_like.c_name);
+                if (it != generator.array_overload_params.end())
+                {
+                    for (const auto &[array_param_name, size_param_name] : it->second)
+                    {
+                        // Find param indices.
+                        std::size_t array_param_idx = SIZE_MAX, size_param_idx = SIZE_MAX;
+                        for (std::size_t i = 0; i < func_like.params.size(); i++)
+                        {
+                            if (func_like.params[i].name.value_or("") == array_param_name)
+                                array_param_idx = i;
+                            else if (func_like.params[i].name.value_or("") == size_param_name)
+                                size_param_idx = i;
+                        }
+                        if (array_param_idx == SIZE_MAX || size_param_idx == SIZE_MAX)
+                            continue; // Parameter not found; skip.
+
+                        // Get the C# element type from the array param's C++ type.
+                        // The C++ type is e.g. `JPH::BodyID *` or `const JPH::BodyID *`.
+                        cppdecl::Type elem_cpp_type = generator.ParseTypeOrThrow(func_like.params[array_param_idx].cpp_type);
+                        if (!elem_cpp_type.Is<cppdecl::Pointer>())
+                            continue; // Not a pointer, skip.
+                        elem_cpp_type.RemoveModifier(); // Strip pointer.
+                        elem_cpp_type.RemoveQualifiers(cppdecl::CvQualifiers::const_); // Strip const.
+                        if (!elem_cpp_type.IsOnlyQualifiedName())
+                            continue; // Not a plain type name, skip.
+                        const std::string csharp_elem_type = generator.CppToCSharpExposedStructName(elem_cpp_type.simple_type.name);
+
+                        // Build the C# parameter list and call argument list for the array overload.
+                        std::string csharp_params;
+                        std::string call_args;
+                        bool first = true;
+
+                        for (std::size_t i = 0; i < func_like.params.size(); i++)
+                        {
+                            const auto &param = func_like.params[i];
+
+                            if (param.is_this_param)
+                            {
+                                // `this` param: pass _UnderlyingPtr, do not add to C# param list.
+                                for (const auto &arg : param_strings[i].dllimport_args)
+                                {
+                                    if (!std::exchange(first, false))
+                                        call_args += ", ";
+                                    call_args += arg;
+                                }
+                                continue;
+                            }
+
+                            if (i == array_param_idx)
+                            {
+                                // Array param: C# type is T[], pass __p_<name> to C function.
+                                if (!csharp_params.empty())
+                                    csharp_params += ", ";
+                                csharp_params += csharp_elem_type + "[] " + param.name.value();
+
+                                if (!std::exchange(first, false))
+                                    call_args += ", ";
+                                call_args += "__p_" + param.name.value();
+                                continue;
+                            }
+
+                            if (i == size_param_idx)
+                            {
+                                // Size param: replaced by array.Length, omitted from C# signature.
+                                if (!std::exchange(first, false))
+                                    call_args += ", ";
+                                call_args += std::string(array_param_name) + ".Length";
+                                continue;
+                            }
+
+                            // Other params: use the existing csharp_decl_params and dllimport_args.
+                            for (const auto &csharp_param : param_strings[i].csharp_decl_params)
+                            {
+                                if (!csharp_params.empty())
+                                    csharp_params += ", ";
+                                // Emit without default arg in the array overload.
+                                csharp_params += csharp_param.type;
+                                if (!csharp_params.ends_with('*'))
+                                    csharp_params += ' ';
+                                csharp_params += csharp_param.name;
+                            }
+                            for (const auto &arg : param_strings[i].dllimport_args)
+                            {
+                                if (!std::exchange(first, false))
+                                    call_args += ", ";
+                                call_args += arg;
+                            }
+                        }
+
+                        // Determine return type.
+                        const std::string return_type = ret_binding->csharp_return_type;
+                        const bool returns_void = (return_type == "void");
+
+                        // Emit the array overload method.
+                        file.WriteSeparatingNewline();
+                        file.WriteString("public unsafe " + return_type + (return_type.ends_with('*') ? "" : " ") + csharp_name + "(" + csharp_params + ")\n");
+                        file.PushScope();
+                        file.WriteString(dllimport_strings.dllimport_decl);
+                        const std::string fixed_open = "fixed (" + csharp_elem_type + "* __p_" + std::string(array_param_name) + " = " + std::string(array_param_name) + ")\n{\n";
+                        file.PushScope({}, fixed_open, "}\n");
+                        file.WriteString(std::string(returns_void ? "" : "return ") + dllimport_strings.csharp_name + "(" + call_args + ");\n");
+                        file.PopScope(); // fixed block
+                        file.PopScope(); // method body
+                    }
+                }
+            }
         }
         catch (...)
         {
