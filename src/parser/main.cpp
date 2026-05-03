@@ -2156,7 +2156,7 @@ namespace mrbind
 
             // -- Fields (non-static data members).
 
-            auto TryHandleField = [&](const clang::FieldDecl *field)
+            auto TryHandleField = [&](const clang::FieldDecl *field, uint64_t extra_byte_offset = 0)
             {
                 if (ShouldRejectRecordField(*field, *ci, *params, printing_policies))
                 {
@@ -2173,12 +2173,31 @@ namespace mrbind
 
                 new_field.type_size = DivideByByteSize(ctx->getTypeInfo(field->getType()).Width);
                 new_field.type_alignment = DivideByByteSize(ctx->getTypeInfo(field->getType()).Align);
-                new_field.byte_offset = DivideByByteSize(ctx->getFieldOffset(field));
+                new_field.byte_offset = extra_byte_offset + DivideByByteSize(ctx->getFieldOffset(field));
             };
 
             // Loop over the fields.
             for (const clang::FieldDecl *field : decl->fields())
-                TryHandleField(field);
+            {
+                if (field->isAnonymousStructOrUnion())
+                {
+                    // Flatten anonymous union/struct members as direct fields of this class.
+                    // Only if the anonymous union itself is publicly accessible.
+                    if (field->getAccess() != clang::AS_public)
+                    {
+                        new_class.some_nonstatic_data_members_skipped = true;
+                        continue;
+                    }
+                    uint64_t union_byte_offset = DivideByByteSize(ctx->getFieldOffset(field));
+                    if (const auto *rec = field->getType()->getAsRecordDecl())
+                        for (const clang::FieldDecl *member : rec->fields())
+                            TryHandleField(member, union_byte_offset);
+                }
+                else
+                {
+                    TryHandleField(field);
+                }
+            }
 
             // -- Constructors and methods.
 
