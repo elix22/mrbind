@@ -515,7 +515,7 @@ namespace mrbind::C
             .cpp_type = cppdecl::Type::FromSingleWord("size_t"),
         });
 
-        ret.cpp_called_func = "new " + generator.CppdeclToCode(cpp_type_name) + "[@1@]{}"; // Right now we're zeroing the array. That sounds like a good idea.
+        ret.cpp_called_func = "new " + generator.CppdeclToCode(cpp_type_name) + "[@1@]"; // Default-initialize each element (not value-initialize with {}) to support explicit default constructors.
 
         ret.c_comment =
             "/// Constructs an array of empty (default-constructed) instances, of the specified size. Will never return null.\n"
