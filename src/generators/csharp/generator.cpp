@@ -6725,16 +6725,20 @@ namespace mrbind::CSharp
                             bool first = true;
                             for (const auto &base_name : class_desc.inheritance_info.bases_indirect.Vec())
                             {
-                                if (class_desc.inheritance_info.bases_indirect.Map().at(base_name) == CInterop::InheritanceInfo::Kind::ambiguous)
+                                const auto base_kind_for_downcast = class_desc.inheritance_info.bases_indirect.Map().at(base_name);
+                                if (base_kind_for_downcast == CInterop::InheritanceInfo::Kind::ambiguous)
                                     continue; // Skip ambiguous bases.
 
                                 const auto &base_desc = std::get<CInterop::TypeKinds::Class>(c_desc.cpp_types.Map().at(base_name).var);
 
-                                if (!c_desc.dynamic_cast_enabled)
-                                    continue; // Dynamic cast functions were disabled in the C generator (--no-dynamic-cast).
+                                // Static downcast is available for non-virtual bases (the C generator emits StaticDowncastFrom for those).
+                                const bool can_static_downcast = (base_kind_for_downcast == CInterop::InheritanceInfo::Kind::non_virt);
 
-                                if (!base_desc.is_polymorphic)
-                                    continue; // For now we don't do static downcasts, as they are unsafe.
+                                if (!c_desc.dynamic_cast_enabled && !can_static_downcast)
+                                    continue; // Dynamic cast disabled and no static downcast available for this base.
+
+                                if (c_desc.dynamic_cast_enabled && !base_desc.is_polymorphic)
+                                    continue; // Dynamic downcast only makes sense for polymorphic types.
 
                                 if (first)
                                 {
@@ -6744,34 +6748,66 @@ namespace mrbind::CSharp
                                 }
 
                                 const std::string csharp_base_name = CppToCSharpClassName(ParseNameOrThrow(base_name), IsConst());
-                                file.WriteString("public static unsafe explicit operator " + unqual_csharp_name + "?(" + csharp_base_name + " parent)\n");
-                                file.PushScope();
 
-                                auto dllimport_decl = MakeDllImportDecl(class_desc.output_file, class_desc.c_name + "_DynamicDowncastFrom_" + base_desc.c_name, "_Underlying *", CppToCSharpClassName(ParseNameOrThrow(base_name), IsConst()) + "._Underlying *_this");
-                                file.WriteString(dllimport_decl.dllimport_decl);
-
-                                file.WriteString(
-                                    "var ptr = " + dllimport_decl.csharp_name + "(parent._UnderlyingPtr);\n"
-                                    "if (ptr is null) return null;\n"
-                                );
-
-                                if (!shared_ptr_desc)
+                                if (!c_desc.dynamic_cast_enabled)
                                 {
-                                    file.WriteString(
-                                        unqual_csharp_name + " ret = new(ptr, is_owning: false);\n"
-                                        "ret._KeepAliveEnclosingObject = parent;\n"
-                                        "return ret;\n"
-                                    );
+                                    // Static downcast: non-nullable, unsafe. Uses StaticDowncastFrom (the const C variant
+                                    // is safe to call for both the const and non-const C# halves since C# has no const system).
+                                    file.WriteString("public static unsafe explicit operator " + unqual_csharp_name + "(" + csharp_base_name + " parent)\n");
+                                    file.PushScope();
+
+                                    auto dllimport_decl = MakeDllImportDecl(class_desc.output_file, class_desc.c_name + "_StaticDowncastFrom_" + base_desc.c_name, "_Underlying *", csharp_base_name + "._Underlying *_this");
+                                    file.WriteString(dllimport_decl.dllimport_decl);
+
+                                    if (!shared_ptr_desc)
+                                    {
+                                        file.WriteString(
+                                            unqual_csharp_name + " ret = new(" + dllimport_decl.csharp_name + "(parent._UnderlyingPtr), is_owning: false);\n"
+                                            "ret._KeepAliveEnclosingObject = parent;\n"
+                                            "return ret;\n"
+                                        );
+                                    }
+                                    else
+                                    {
+                                        file.WriteString(
+                                            "return " + unqual_csharp_name + "._MakeAliasing((" + sharedptr_constvoid_underlying_ptr_type.value() + ")parent._UnderlyingSharedPtr, " + dllimport_decl.csharp_name + "(parent._UnderlyingPtr));\n"
+                                        );
+                                    }
+
+                                    file.PopScope();
                                 }
                                 else
                                 {
-                                    // See the upcast code above for an explanation of what we're doing here and why.
-                                    file.WriteString(
-                                        "return " + unqual_csharp_name + "._MakeAliasing((" + sharedptr_constvoid_underlying_ptr_type.value() + ")parent._UnderlyingSharedPtr, ptr);\n"
-                                    );
-                                }
+                                    // Dynamic downcast: nullable.
+                                    file.WriteString("public static unsafe explicit operator " + unqual_csharp_name + "?(" + csharp_base_name + " parent)\n");
+                                    file.PushScope();
 
-                                file.PopScope();
+                                    auto dllimport_decl = MakeDllImportDecl(class_desc.output_file, class_desc.c_name + "_DynamicDowncastFrom_" + base_desc.c_name, "_Underlying *", CppToCSharpClassName(ParseNameOrThrow(base_name), IsConst()) + "._Underlying *_this");
+                                    file.WriteString(dllimport_decl.dllimport_decl);
+
+                                    file.WriteString(
+                                        "var ptr = " + dllimport_decl.csharp_name + "(parent._UnderlyingPtr);\n"
+                                        "if (ptr is null) return null;\n"
+                                    );
+
+                                    if (!shared_ptr_desc)
+                                    {
+                                        file.WriteString(
+                                            unqual_csharp_name + " ret = new(ptr, is_owning: false);\n"
+                                            "ret._KeepAliveEnclosingObject = parent;\n"
+                                            "return ret;\n"
+                                        );
+                                    }
+                                    else
+                                    {
+                                        // See the upcast code above for an explanation of what we're doing here and why.
+                                        file.WriteString(
+                                            "return " + unqual_csharp_name + "._MakeAliasing((" + sharedptr_constvoid_underlying_ptr_type.value() + ")parent._UnderlyingSharedPtr, ptr);\n"
+                                        );
+                                    }
+
+                                    file.PopScope();
+                                }
                             }
                         }
                     }

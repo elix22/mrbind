@@ -218,6 +218,14 @@ Files under `deps/JoltPhysics/bindings/c/` (and any other `bindings/` output dir
 
 **Example 2:** `size_t` fields emitted as `unsigned long` (wrong on 32-bit Android and Windows) — fix: `PortableTypeStr()` in `src/generators/c/generator.cpp` that prefers `type.pretty` (e.g. `size_t`) over `type.canonical` (e.g. `unsigned long`) when the pretty form is a plain C identifier.
 
+### Run generate.sh before writing C# tests for new bindings
+
+When adding a new type to the Jolt C# bindings (new `--allow` in `generate.sh`, new helper in `jolt_init_wrapper.h`), **always run `generate.sh` first** to regenerate the C and C# binding files before writing any test code. Tests reference the generated C# API; writing tests before regeneration means testing against a stale or missing API and discovering errors at test-compile time instead of generation time.
+
+```bash
+bash deps/JoltPhysics/bindings/generate.sh
+```
+
 ### Verify end-to-end
 
 For binding work, "done" means the full pipeline runs without errors **and** the consumer program produces correct output. Compilation success alone is not sufficient.
