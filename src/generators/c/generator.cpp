@@ -5258,6 +5258,8 @@ namespace mrbind::C
                     auto binder = self.MakeParsedClassBinder(cl.full_type);
 
                     // Elementwise constructor for aggregates.
+                    try
+                    {
                     if (
                         cl.is_aggregate &&
                         // If some of the fields are missing from the parser output, we won't be able to initialize elementwise anyway.
@@ -5357,6 +5359,11 @@ namespace mrbind::C
                             emit.cpp_called_func_parens = {"{", "}"}; // Don't rely on C++20 `(...)` aggregate initialization syntax.
                             self.EmitFunction(file, emit);
                         }
+                    }
+                    }
+                    catch (std::exception &e)
+                    {
+                        std::clog << "mrbind_gen_c: warning: Skipping elementwise constructor for class `" << cl.full_type << "`: " << e.what() << "\n";
                     }
 
                     // Pointer offsetting.
