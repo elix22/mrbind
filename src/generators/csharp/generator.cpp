@@ -457,7 +457,18 @@ namespace mrbind::CSharp
             // Pointer-sized typedefs (size_t, ptrdiff_t, uintptr_t, etc.) must map to
             // UIntPtr/IntPtr so the C# size matches the C size on every target (including
             // wasm32 where `unsigned long` / `size_t` is 32 bits, not 64).
-            if (opt->typedef_for.has_value() && opt->type_size == c_desc.platform_info.pointer_size)
+            // Fixed-size typedefs (uint64_t, int64_t, etc.) must NOT use UIntPtr/IntPtr:
+            // on a 64-bit build host their type_size also equals pointer_size, but they
+            // are always exactly 8 bytes, so they must map to ulong/long (which are
+            // guaranteed 8 bytes in C# on all platforms including wasm32).
+            static constexpr std::string_view fixed_size_int_typedefs[] = {
+                "int8_t", "uint8_t", "int16_t", "uint16_t",
+                "int32_t", "uint32_t", "int64_t", "uint64_t",
+            };
+            const bool is_fixed_size_int = std::any_of(
+                std::begin(fixed_size_int_typedefs), std::end(fixed_size_int_typedefs),
+                [&](std::string_view n) { return c_type == n; });
+            if (!is_fixed_size_int && opt->typedef_for.has_value() && opt->type_size == c_desc.platform_info.pointer_size)
             {
                 switch (opt->kind)
                 {

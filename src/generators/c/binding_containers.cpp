@@ -105,9 +105,12 @@ namespace mrbind::C
             generator.TryFindHeadersForCppTypeForSourceFile(cppdecl::Type::FromQualifiedName(cpp_container_type)).InsertToFile(file);
 
             class_binder.EmitForwardDeclaration(generator, file, "/// Generated from C++ container `" + generator.CppdeclToCodeForComments(cpp_container_type) + "`.\n");
-            iterator_binder_const.EmitForwardDeclaration(generator, file, "/// Read-only iterator for `" + class_binder.c_type_name + "`.\n");
-            if (params.has_mutable_iterators)
-                iterator_binder_mutable.EmitForwardDeclaration(generator, file, "/// Mutable iterator for `" + class_binder.c_type_name + "`.\n");
+            if (!iterator_is_raw_pointer)
+            {
+                iterator_binder_const.EmitForwardDeclaration(generator, file, "/// Read-only iterator for `" + class_binder.c_type_name + "`.\n");
+                if (params.has_mutable_iterators)
+                    iterator_binder_mutable.EmitForwardDeclaration(generator, file, "/// Mutable iterator for `" + class_binder.c_type_name + "`.\n");
+            }
 
             // The special member functions:
             class_binder.EmitSpecialMemberFunctions(generator, file);
@@ -537,7 +540,7 @@ namespace mrbind::C
                 // We could omit those when dealing with random-access containers, but let's keep them for consistency with other containers.
                 // We also disable them for maps, because for maps we hide the underlying pairs.
                 // And we also disable them for sets, because there the iterator acts merely as an insertion hint, and we don't expose those hints to C.
-                if (!params.is_set && !params.is_map && (params.insert_requires_assignment <= bool(elem_traits.move_assignable)))
+                if (!params.is_set && !params.is_map && !iterator_is_raw_pointer && (params.insert_requires_assignment <= bool(elem_traits.move_assignable)))
                 {
                     for (bool is_const_iter : {false, true})
                     {
@@ -583,6 +586,7 @@ namespace mrbind::C
                 }
 
                 // Obtaining begin/end iterators:
+                if (!iterator_is_raw_pointer)
                 for (bool is_end : {false, true})
                 {
                     std::string begin_or_end_str = is_end ? "end" : "begin";
@@ -626,6 +630,7 @@ namespace mrbind::C
                 }
 
                 // iterator to index
+                if (!iterator_is_raw_pointer)
                 if (params.iter_category >= IteratorCategory::random_access)
                 {
                     for (bool is_const_iter : {true, false})
@@ -651,6 +656,7 @@ namespace mrbind::C
                 }
             }
 
+            if (!iterator_is_raw_pointer)
             { // Iterators
                 iterator_binder_const.EmitSpecialMemberFunctions(generator, file);
 
@@ -856,6 +862,7 @@ namespace mrbind::C
             const cppdecl::Type *mapped_elem_type = params.is_map ? &std::get<cppdecl::Type>(container_name->parts.back().template_args.value().args.at(1).var) : nullptr;
 
             ContainerBinder binder(generator, *container_name, elem_type, mapped_elem_type ? *mapped_elem_type : cppdecl::Type{}, target.stdlib_container_header, params);
+            binder.iterator_is_raw_pointer = target.iterator_is_raw_pointer;
 
             if (is_container)
                 return binder.MakeBinding(generator);

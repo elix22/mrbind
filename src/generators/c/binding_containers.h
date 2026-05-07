@@ -59,6 +59,12 @@ namespace mrbind::C
         // The file is created lazily on the first use.
         Generator::OutputFile &GetImplementationFile(Generator &generator) const;
 
+        // True when `iterator`/`const_iterator` are raw pointers (e.g. JPH::Array<T>::iterator = T*).
+        // In that case all iterator-specific C API (EmitSpecialMemberFunctions, begin/end, etc.) is suppressed,
+        // because the generated code would try to call .operator=() on a pointer, which is invalid.
+        // Set externally by MetaContainerBinder::MakeBinding() based on Target::iterator_is_raw_pointer.
+        bool iterator_is_raw_pointer = false;
+
       private:
         cppdecl::QualifiedName cpp_container_type;
         cppdecl::Type cpp_elem_type;
@@ -87,6 +93,10 @@ namespace mrbind::C
 
             // The header where the container template itself is declared, e.g. `vector` for `std::vector`. Leave empty if not needed.
             std::string stdlib_container_header;
+
+            // Set to true when the container's iterator typedef resolves to a raw pointer (e.g. JPH::Array<T>::iterator = T*).
+            // In that case all iterator-specific C API is suppressed, since the generator cannot call .operator=() on a raw pointer.
+            bool iterator_is_raw_pointer = false;
         };
 
         // Need at least one.

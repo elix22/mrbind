@@ -1,10 +1,61 @@
 #include "generators/c/binding_containers.h"
 #include "generators/c/module.h"
 
+#include <string_view>
+
 namespace mrbind::C::Modules
 {
     struct StdVector : DeriveModule<StdVector>
     {
+        // Helper: split "JPH::Array" → QualifiedName{}.AddPart("JPH").AddPart("Array")
+        static cppdecl::QualifiedName ParseQualifiedName(std::string_view s)
+        {
+            cppdecl::QualifiedName result;
+            while (!s.empty())
+            {
+                auto pos = s.find("::");
+                std::string_view part = (pos == std::string_view::npos) ? s : s.substr(0, pos);
+                result.AddPart(std::string(part));
+                s = (pos == std::string_view::npos) ? std::string_view{} : s.substr(pos + 2);
+            }
+            return result;
+        }
+
+        void RegisterCommandLineFlags(CommandLineParser &args_parser) override
+        {
+            args_parser.AddFlag("--vector-like-container", {
+                .allow_repeat = true,
+                .arg_names = {"qualified::Name", "include/header.h"},
+                .desc = "Bind an additional vector-like container (same interface as std::vector) "
+                        "under its fully-qualified C++ name. The second argument is the header to "
+                        "#include in the generated source. Can be specified multiple times.\n"
+                        "Example: --vector-like-container JPH::Array Jolt/Core/Array.h\n"
+                        "If the container's iterator type is a raw pointer (e.g. T*), pass the "
+                        "additional flag --vector-like-container-raw-pointer-iterators immediately "
+                        "after to suppress iterator binding (which would otherwise generate invalid C++).",
+                .func = [this](CommandLineParser::ArgSpan args)
+                {
+                    binder_vector.targets.push_back({
+                        .generic_cpp_container_names = {ParseQualifiedName(args[0])},
+                        .stdlib_container_header = std::string(args[1]),
+                    });
+                },
+            });
+            args_parser.AddFlag("--vector-like-container-raw-pointer-iterators", {
+                .allow_repeat = true,
+                .arg_names = {},
+                .desc = "Mark the most recently added --vector-like-container as having raw-pointer "
+                        "iterators (e.g. T*). Suppresses all iterator-related C API for that container.",
+                .func = [this](CommandLineParser::ArgSpan)
+                {
+                    if (binder_vector.targets.empty())
+                        throw std::runtime_error("--vector-like-container-raw-pointer-iterators must follow --vector-like-container");
+                    binder_vector.targets.back().iterator_is_raw_pointer = true;
+                },
+            });
+        }
+
+
         MetaContainerBinder binder_vector = {
             .targets = {
                 {
