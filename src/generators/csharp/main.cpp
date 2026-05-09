@@ -260,6 +260,20 @@ int main(int argc, char **argv)
         },
     });
 
+    args_parser.AddFlag("--emit-extension-class", {
+        .allow_repeat = true,
+        .arg_names = {"cpp_class_name"},
+        .desc = "For the named C++ class, emit a companion top-level static C# extension class "
+                "containing extension methods that delegate to each qualifying static method of the class. "
+                "The extension methods allow calling e.g. `obj.FooMethod(args)` instead of "
+                "`HelperClass.ClassFooMethod(obj, args)`. "
+                "`cpp_class_name` is the fully-qualified C++ class name (e.g. `JPH::JoltHelpers`).",
+        .func = [&](mrbind::CommandLineParser::ArgSpan args)
+        {
+            generator.emit_extension_class_for.insert(std::string(args.front()));
+        },
+    });
+
     mrbind::CommandLineArgsAsUtf8 args(argc, argv);
     args_parser.Parse(args.argc, args.argv);
 

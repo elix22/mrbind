@@ -219,6 +219,7 @@ mrbind_gen_csharp --input-json <c_desc.json> --output-dir <dir> \
 |---|---|---|
 | `--method-precondition` | `<c_name> <csharp_condition> <message>` | Inject a runtime guard into the named C binding function. `<c_name>` is the C function name (e.g. `JPH_Body_GetInverseInertia`). `<csharp_condition>` is a C# boolean expression evaluated in the context of `this` — if it evaluates to `false`, a `System.InvalidOperationException` is thrown with `<message>` before the native call is made. Can be repeated. |
 | `--array-overload-param` | `<c_name> <array_param> <size_param>` | Emit an additional C# overload for the named C function where `<array_param>` becomes a managed `T[]` array and `<size_param>` is dropped (replaced by `array.Length`). The element type `T` is inferred from the C pointer type of the parameter. A `fixed` block pins the array before the native call. Can be repeated for multiple functions, and multiple times for the same function. |
+| `--emit-extension-class` | `<cpp_class_name>` | Generate a companion top-level `public static partial` C# class containing extension methods for all static methods of the named C++ helper class (e.g. `JoltHelpers`). Each static method whose first parameter is a known C# class type is exposed as an extension method on that type, with the receiver type's name stripped as a prefix from the method name where possible. The generated class name is derived by stripping a trailing `Helpers` suffix (if any) and appending `Extensions` — e.g. `JoltHelpers` → `JoltExtensions`. The class is written to a separate file named after the class (e.g. `JoltExtensions.cs`). Declare the matching hand-written companion class as `partial` to merge the two halves. Can be repeated. |
 
 ---
 
@@ -234,5 +235,6 @@ mrbind_gen_csharp --input-json <c_desc.json> --output-dir <dir> \
 | Suppress exception wrapping | `mrbind_gen_c --no-handle-exceptions` |
 | Split output into multiple DLLs | `mrbind_gen_c --split-library …` + `mrbind_gen_csharp --imported-split-lib-name …` |
 | Emit batch array overloads in C# | `mrbind_gen_csharp --array-overload-param <c_func> <array_param> <size_param>` |
+| Auto-generate C# extension methods from a helper class | `mrbind_gen_csharp --emit-extension-class <CppHelperClassName>` |
 | Inject a runtime precondition check | `mrbind_gen_csharp --method-precondition <c_func> <condition> <message>` |
 | Unity / .NET Standard 2.0 compatibility | `mrbind_gen_csharp --dotnet-version std2.0 --csharp-version 12` |

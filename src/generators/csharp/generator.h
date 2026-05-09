@@ -7,6 +7,7 @@
 #include <cppdecl/declarations/to_string.h>
 
 #include <map>
+#include <set>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -461,6 +462,12 @@ namespace mrbind::CSharp
         // and the size parameter is dropped (replaced by `array.Length`).
         // Populated by the `--array-overload-param` CLI flag.
         std::map<std::string, std::vector<std::pair<std::string, std::string>>, std::less<>> array_overload_params;
+
+        // C++ class names for which to emit a companion top-level static C# extension class
+        // containing extension methods that delegate to each static method of the class.
+        // The extension methods allow calling e.g. `obj.FooMethod(args)` instead of `JoltHelpers.ClassFooMethod(obj, args)`.
+        // Populated by the `--emit-extension-class` CLI flag.
+        std::set<std::string> emit_extension_class_for;
 
         // ]
 
@@ -1123,6 +1130,10 @@ namespace mrbind::CSharp
         // Emit a type unconditionally (you should check `ShouldEmitCppType()` yourself).
         // Assumes that the correct namespace or class was already entered in `file`.
         void EmitCppTypeUnconditionally(OutputFile &file, const std::string &cpp_type);
+
+        // For a class listed in `emit_extension_class_for`, emit a companion top-level static C# extension class
+        // containing extension methods that delegate to each qualifying static method.
+        void EmitExtensionClass(const std::string &cpp_type);
 
         // Returns true if this C++ type maps to a class in C# (which we could make hold `std::shared_ptr` internally, among other things).
         // This also returns true for exposed structs, since in C# they get both a proper `ref struct` and the class wrappers.

@@ -6729,6 +6729,24 @@ namespace mrbind::CSharp
                                 }
 
                                 file.PopScope();
+
+                                // For the mutable class, also emit a direct operator to the const version of the base.
+                                // Without this, passing e.g. `BoxShapeSettings` to a parameter of type `Const_ShapeSettings`
+                                // is ambiguous (CS0457) because C# sees two equally-costed paths:
+                                //   (1) BoxShapeSettings --(UDC)--> ShapeSettings --(standard, ShapeSettings:Const_ShapeSettings)--> Const_ShapeSettings
+                                //   (2) BoxShapeSettings --(standard, BoxShapeSettings:Const_BoxShapeSettings)--> Const_BoxShapeSettings --(UDC)--> Const_ShapeSettings
+                                // A direct `implicit operator Const_ShapeSettings(BoxShapeSettings)` eliminates both ambiguous paths.
+                                if (!IsConst())
+                                {
+                                    const std::string csharp_const_self_name = CppToCSharpClassName(cpp_qual_name, true);
+                                    const std::string csharp_const_base_name = CppToCSharpClassName(ParseNameOrThrow(base_name), true);
+                                    // Body: standard-convert to const-self (no UDC since MutableClass : ConstClass),
+                                    // then the existing UDC on const-self to const-base handles the rest.
+                                    file.WriteString(
+                                        "public static unsafe implicit operator " + csharp_const_base_name + "(" + unqual_csharp_name + " self)\n"
+                                        "    => (" + csharp_const_base_name + ")(" + csharp_const_self_name + ")self;\n"
+                                    );
+                                }
                             }
                         }
 
@@ -8204,6 +8222,251 @@ namespace mrbind::CSharp
         }
     }
 
+    void Generator::EmitExtensionClass(const std::string &cpp_type)
+    {
+        try
+        {
+            const cppdecl::QualifiedName cpp_qual_name = ParseNameOrThrow(cpp_type);
+            const CInterop::TypeDesc &type_desc = *c_desc.FindTypeOpt(cpp_type);
+            const CInterop::TypeKinds::Class &class_desc = std::get<CInterop::TypeKinds::Class>(type_desc.var);
+
+            // Collect methods to emit.
+            struct ExtMethod
+            {
+                const CInterop::ClassMethod *method;
+                std::string ext_name;         // The extension method name (suffix of full C# method name).
+                std::string csharp_name;      // Full generated C# method name on the helper class.
+                std::string first_param_cpp_type; // C++ type name of the first real parameter (ref/const stripped), for derived-class extension generation.
+            };
+
+            std::vector<ExtMethod> ext_methods;
+
+            for (const CInterop::ClassMethod &method : class_desc.methods)
+            {
+                // Only static regular methods.
+                if (!method.is_static)
+                    continue;
+                auto *regular = std::get_if<CInterop::MethodKinds::Regular>(&method.var);
+                if (!regular)
+                    continue;
+
+                // Must have a real first parameter (params[0] is the dummy static this, params[1] is the first real param).
+                if (method.params.size() < 2)
+                    continue;
+                const CInterop::FuncParam &first_real_param = method.params.at(1);
+
+                // First real param must be a C# class type.
+                cppdecl::Type first_param_type = ParseTypeOrThrow(first_real_param.cpp_type);
+                // Strip reference and const.
+                if (first_param_type.Is<cppdecl::Reference>())
+                    first_param_type.RemoveModifier();
+                first_param_type.RemoveQualifiers(cppdecl::CvQualifiers::const_);
+
+                if (!first_param_type.IsOnlyQualifiedName())
+                    continue;
+
+                const CInterop::TypeDesc *first_param_desc = c_desc.FindTypeOpt(CppdeclToCode(first_param_type));
+                if (!first_param_desc)
+                    continue;
+                if (!std::holds_alternative<CInterop::TypeKinds::Class>(first_param_desc->var))
+                    continue;
+                const CInterop::TypeKinds::Class &first_param_class = std::get<CInterop::TypeKinds::Class>(first_param_desc->var);
+                if (first_param_class.kind == CInterop::ClassKind::exposed_struct)
+                    continue; // Extension methods on exposed structs don't work well.
+
+                // Check ShouldEmitMethod.
+                auto should_emit = ShouldEmitMethod(cpp_qual_name, type_desc, method, EmitVariant::regular);
+                if (!should_emit)
+                    continue;
+
+                // Compute the C# method name on the helper class.
+                std::string csharp_name = MakeUnqualCSharpMethodName(method, true, EmitVariant::regular);
+
+                // Compute the extension method name: try stripping the first param C# class name as a prefix.
+                const std::string first_param_csharp_class = CppToCSharpUnqualClassName(first_param_type.simple_type.name, false);
+                std::string ext_name = csharp_name;
+                if (ext_name.starts_with(first_param_csharp_class))
+                    ext_name = ext_name.substr(first_param_csharp_class.size());
+                if (ext_name.empty())
+                    ext_name = csharp_name;
+
+                ext_methods.push_back({&method, std::move(ext_name), std::move(csharp_name), CppdeclToCode(first_param_type)});
+            }
+
+            if (ext_methods.empty())
+                return;
+
+            // Compute the const C# helper class name (the one that has all the static methods).
+            const std::string const_helper_class = helpers_prefix + "Const_" + CppToCSharpIdentifier(cpp_qual_name.parts.back());
+
+            // Derive the extension class name by stripping a trailing "Helpers" suffix (if present)
+            // from the C# class name, then appending "Extensions".
+            // E.g. JoltHelpers -> JoltExtensions.
+            std::string base_ext_name = CppToCSharpIdentifier(cpp_qual_name.parts.back());
+            static constexpr std::string_view helpers_suffix = "Helpers";
+            if (base_ext_name.ends_with(helpers_suffix))
+                base_ext_name.resize(base_ext_name.size() - helpers_suffix.size());
+            const std::string ext_class_name = base_ext_name + "Extensions";
+
+            // Emit the extension class in a separate top-level output file.
+            // Extension methods must be in a non-nested static class (cannot be inside the JPH partial class).
+            OutputFile &ext_file = output_files.try_emplace(ext_class_name).first->second;
+
+            // Emit at the top level (no namespace/class scope needed for file-scoped top-level classes in C# 10+).
+            // But for clarity and to match existing style, emit without a namespace wrapper.
+            // Use `partial` so that hand-written overloads in a separate file can co-exist in the same class.
+            ext_file.WriteSeparatingNewline();
+            ext_file.WriteString("public static unsafe partial class " + ext_class_name + "\n");
+            ext_file.PushScope();
+
+            for (const auto &em : ext_methods)
+            {
+                const CInterop::ClassMethod &method = *em.method;
+
+                try
+                {
+                    // Collect C# parameter strings for the real params (index 1 onwards; 0 is the dummy static this).
+                    // params[1] will become `this` in the extension signature.
+                    struct ParamInfo
+                    {
+                        std::string cs_type;  // C# param type
+                        std::string cs_name;  // C# param name
+                    };
+
+                    std::vector<ParamInfo> params_info;
+                    bool any_error = false;
+                    for (std::size_t i = 1; i < method.params.size(); i++)
+                    {
+                        const CInterop::FuncParam &p = method.params.at(i);
+                        try
+                        {
+                            TypeBinding::ParamUsage::Strings ps = GetParameterBinding(p, true, {}, false);
+                            if (ps.csharp_decl_params.empty())
+                            {
+                                any_error = true;
+                                break;
+                            }
+                            // Use the first C# param (usually there's only one per C++ param, except for some helpers).
+                            // For extension methods we only need a simple 1:1 delegation, so skip params that expand to >1.
+                            if (ps.csharp_decl_params.size() > 1)
+                            {
+                                any_error = true;
+                                break;
+                            }
+                            params_info.push_back({ps.csharp_decl_params.front().type, ps.csharp_decl_params.front().name});
+                        }
+                        catch (...)
+                        {
+                            any_error = true;
+                            break;
+                        }
+                    }
+
+                    if (any_error || params_info.empty())
+                        continue;
+
+                    // Get return type.
+                    std::string ret_type;
+                    try
+                    {
+                        const TypeBinding::ReturnUsage &ret_b = GetReturnBinding(method.ret, {});
+                        ret_type = ret_b.csharp_return_type;
+                    }
+                    catch (...)
+                    {
+                        continue;
+                    }
+
+                    // Build the extension method signature.
+                    // params_info[0] is the first real param -> `this` param.
+                    ext_file.WriteSeparatingNewline();
+                    std::string sig = "public static " + ret_type + " " + em.ext_name + "(";
+
+                    // `this` parameter (first real param).
+                    sig += "this " + params_info[0].cs_type + " " + params_info[0].cs_name;
+
+                    // Remaining parameters.
+                    for (std::size_t i = 1; i < params_info.size(); i++)
+                    {
+                        sig += ", " + params_info[i].cs_type + " " + params_info[i].cs_name;
+                    }
+
+                    sig += ")";
+
+                    // Build the call arguments (just param names).
+                    std::string call_args;
+                    for (std::size_t i = 0; i < params_info.size(); i++)
+                    {
+                        if (i > 0) call_args += ", ";
+                        call_args += params_info[i].cs_name;
+                    }
+
+                    if (ret_type == "void")
+                        ext_file.WriteString(sig + " => " + const_helper_class + "." + em.csharp_name + "(" + call_args + ");\n");
+                    else
+                        ext_file.WriteString(sig + " => " + const_helper_class + "." + em.csharp_name + "(" + call_args + ");\n");
+
+                    // Emit the same extension method for all non-virtually derived classes.
+                    // The C# generated code provides implicit operator upcasts (e.g. CharacterVirtualSettings → CharacterBaseSettings)
+                    // so the body is identical — the compiler inserts the upcast automatically.
+                    try
+                    {
+                        const bool first_param_is_const = params_info[0].cs_type.starts_with(helpers_prefix + "Const_");
+                        const CInterop::TypeDesc *base_desc = c_desc.FindTypeOpt(em.first_param_cpp_type);
+                        if (base_desc)
+                        {
+                            const auto *base_class_info = std::get_if<CInterop::TypeKinds::Class>(&base_desc->var);
+                            if (base_class_info)
+                            {
+                                for (const auto &[derived_cpp_type, kind] : base_class_info->inheritance_info.derived_indirect)
+                                {
+                                    if (kind != CInterop::InheritanceInfo::Kind::non_virt)
+                                        continue;
+                                    const CInterop::TypeDesc *derived_desc = c_desc.FindTypeOpt(derived_cpp_type);
+                                    if (!derived_desc)
+                                        continue;
+                                    const auto *derived_class_info = std::get_if<CInterop::TypeKinds::Class>(&derived_desc->var);
+                                    if (!derived_class_info || derived_class_info->kind == CInterop::ClassKind::exposed_struct)
+                                        continue;
+
+                                    // Compute the C# type name for the derived class `this` parameter.
+                                    // Use CppToCSharpClassName (not just the unqual version) so that nested types
+                                    // like JPH::RagdollSettings::Part produce "JPH.RagdollSettings.Part" rather than "JPH.Part".
+                                    cppdecl::QualifiedName derived_qual = ParseNameOrThrow(derived_cpp_type);
+                                    const std::string derived_this_type = CppToCSharpClassName(derived_qual, first_param_is_const);
+
+                                    // Build derived extension method — same body, different `this` type.
+                                    ext_file.WriteSeparatingNewline();
+                                    std::string derived_sig = "public static " + ret_type + " " + em.ext_name + "(";
+                                    derived_sig += "this " + derived_this_type + " " + params_info[0].cs_name;
+                                    for (std::size_t i = 1; i < params_info.size(); i++)
+                                        derived_sig += ", " + params_info[i].cs_type + " " + params_info[i].cs_name;
+                                    derived_sig += ")";
+
+                                    ext_file.WriteString(derived_sig + " => " + const_helper_class + "." + em.csharp_name + "(" + call_args + ");\n");
+                                }
+                            }
+                        }
+                    }
+                    catch (...)
+                    {
+                        // Don't abort if derived-class extension fails — base class extension was already emitted.
+                    }
+                }
+                catch (...)
+                {
+                    // Skip methods that fail — don't abort the whole extension class.
+                }
+            }
+
+            ext_file.PopScope(); // Close extension class.
+        }
+        catch (...)
+        {
+            std::throw_with_nested(std::runtime_error("While emitting extension class for `" + cpp_type + "`:"));
+        }
+    }
+
     void Generator::Generate()
     {
         { // Perform some simple initialization.
@@ -8611,6 +8874,13 @@ namespace mrbind::CSharp
 
         // Generate the requested helpers. This must be after all user code generation, but before closing the namespaces.
         GenerateHelpers();
+
+        // Emit extension classes for any requested types.
+        for (const std::string &cpp_type : emit_extension_class_for)
+        {
+            if (c_desc.FindTypeOpt(cpp_type))
+                EmitExtensionClass(cpp_type);
+        }
 
         { // Lastly, close the namespaces in all files.
             for (auto &file : output_files)
