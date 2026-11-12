@@ -1,3 +1,4 @@
+#include <cerrno>
 #include "command_line_parser.h"
 
 #include <cppdecl/misc/string_helpers.h>
